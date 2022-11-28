@@ -1,0 +1,4450 @@
+---
+title: "ANXCMBD_descriptives_frequencies"
+author: "Molly R. Davies"
+date: 11/02/2021
+output:  
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: 2
+    toc_float:
+      collapsed: false
+    number_sections: false
+    highlight: monochrome
+    theme: cerulean
+code_folding: show
+
+html_notebook:
+  theme: cerulean
+toc: yes
+---
+
+This is the script to run demographic descriptives, frequencies of the single-item/algorithm-based diagnoses, and anxiety comorbidities in the GLAD and COPING NBR samples. 
+
+Results have been published as a paper titled "Factors associated with anxiety disorder comorbidity" (Davies et al., 2022) https://doi.org/10.1016/j.jad.2022.11.051. 
+The paper has been pre-registered at: https://osf.io/ksrf2
+
+Script written by M. R. Davies.
+Email:  molly.davies@kcl.ac.uk
+
+All scripts for the paper can be accessed at:
+https://github.com/mollyrdavies/ANXCMBD-GLAD-COPING
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Set up
+
+Clear workspace
+```{r clear workspace}
+rm(list = ls())
+```
+
+```{r install packages}
+#install.packages("summarytools")
+#install.packages("tidyverse")
+#install.packages("descr")
+#install.packages("gt") #not available for the Rosalind R version (3.6.2)
+#install.packages("rstatix")
+#install.packages("skimr")
+#install.packages("psych")
+```
+
+```{r import packages}
+library(descr)
+library(knitr)
+library(gt)
+library(rstatix)
+library(skimr)
+library(psych)
+library(broom)
+library(patchwork)
+#library(summarytools)
+library(tidyverse)
+```
+
+```{r set GLAD palette}
+GLADpalette = c(
+  "#efc00b", #Yellow
+  "#fef1ba", #Light yellow
+  "#b7dee8", #Light blue
+  "#009fb7" #Turquoise
+  )
+```
+
+# ggplot theme
+Set up ggplot theme for the plots
+```{r ggplot theme}
+theme_personal <-  theme(
+    text = element_text(color = "black"),
+    axis.title = element_text(color = "black"),
+    axis.text = element_text(color = "black"),
+    axis.title.y = element_blank(), 
+    legend.background = element_blank(),
+    legend.box.background = element_blank(),
+    panel.background = element_blank(), 
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.x = element_line(
+      colour = "gray",
+      linetype = "dashed",
+      size = 0.2
+      ),
+    axis.ticks = element_blank()
+    )
+```
+
+
+```{r source file paths}
+source("../../../ANXCMBD_data_path.R")
+```
+
+```{r read data}
+# Dataset updated and rerun with corrected comorbidity groups
+dat.cc <- read_rds(paste0(cleaned_path, "anxcmbd_newvariables_uncleaned_final.rds"))
+```
+
+```{r visualise dataset}
+dim(dat.cc)
+head(dat.cc)
+```
+
+# Filtering
+
+## Data freeze 1.5
+Some datasets may include data from later timepoints if errors were detected in the data extraction process that needed correcting. However, data freeze 1.5 should only include data collected prior to *August 17th, 2021*. Data collected after that date are filtered out and not included in this paper.
+
+
+```{r filter data collected after DF 1.5}
+dat.df1 <- dat.cc %>% 
+  filter(endDate <= as.Date("2021-08-17", "%Y-%m-%d"))
+
+#Check N
+dim(dat.df1)
+```
+
+## Incomplete surveys
+Some participants are included in the dataset whose surveys expired and they didn't actually complete the questionnaire. Filter for people who do not have NAs for age or in the first CIDID variable. This will be the sample size pre-exclusion/inclusion criteria for the paper.
+```{r filter out unfinished participants}
+dat.df1 <- dat.df1 %>% 
+  filter(
+    !is.na(dem.age) | 
+      !is.na(cidid.felt_sad_blue_row))
+
+paste0("The total N participants (before exclusions) is ", nrow(dat.df1))
+```
+
+```{r total participants by sample}
+dat.df1 %>% 
+  group_by(sample) %>% 
+  count()
+```
+
+```{r N with family history data}
+dat.df1 %>% 
+  filter(!is.na(mhfh.anxiety_or_depression) | !is.na(mhfh.other_disorders)) %>% 
+  count()
+```
+
+```{r N with genetic data}
+dat.df1 %>% 
+  filter(!is.na(depression05_PRS_z)) %>% 
+  count()
+```
+
+
+# Eligibility
+Participants are eligible if they meet criteria at least 1 lifetime symptom-based diagnosis, and don't have missing data for age, sex, or comorbidity.
+
+```{r filter for ppt with at least 1 lifetime symptom-based diagnosis}
+dat.df2 <- dat.df1 %>% 
+  filter(algorithm_based_count_numeric > 0)
+
+nrow(dat.df2)
+```
+
+
+```{r check N with NAs for age}
+dat.df2 %>% 
+  filter(is.na(dem.age)) %>% 
+  nrow()
+```
+
+```{r check N with NAs for sex}
+dat.df2 %>% 
+  filter(is.na(dem.sex)) %>% 
+  nrow()
+```
+
+```{r check N with NAs for comorbidity group}
+dat.df2 %>% 
+  filter(is.na(all_anxiety_depression)) %>% 
+  nrow()
+```
+
+
+```{r filter eligible}
+dat <- dat.df2 %>% 
+  filter(
+         !is.na(dem.sex),
+         !is.na(dem.age),
+         !is.na(all_anxiety_depression)
+         )
+
+#Get N eligible
+paste0("The total N participants included in the paper is ", nrow(dat))
+```
+
+
+```{r total N participants by sample}
+dat %>% 
+  group_by(sample) %>% 
+  count()
+```
+
+```{r N with family history data}
+dat %>% 
+  filter(!is.na(mhfh.anxiety_or_depression) | !is.na(mhfh.other_disorders)) %>% 
+  count()
+```
+
+```{r N with genetic data}
+dat %>% 
+  filter(!is.na(depression05_PRS_z)) %>% 
+  count()
+```
+
+# Generate mode function
+To use in descriptives analysis chunks
+```{r Mode function}
+mode_func <- function(x, na.rm = FALSE) {
+  if(na.rm){
+    x = x[!is.na(x)]
+  }
+
+  ux <- unique(x)
+  return(ux[which.max(tabulate(match(x, ux)))])
+}
+```
+
+# Vectors for ordering variables in tables
+
+```{r all variables vector, include=FALSE}
+#Create vector to order factor for tables
+Variable_ordered <- c(
+  "Age (years, sd)",
+  "Sex (% female, n)",
+  "Ethnicity (% white, n)",
+  "Highest education: University degree (%, n)",
+  "Highest education: A-levels (%, n)",
+  "Highest education: GCSEs (%, n)",
+  "Highest education: No qualifications (%, n)",
+  "Family history: Anxiety/depressive disorder (% positive, n)",
+  "Family history: Other mental health disorder (% positive, n)",
+  "Childhood trauma (% present, n)",
+  "Adult trauma (% present, n)",
+  "Catastrophic trauma (% present, n)",
+  "Self-reported anxiety/depressive disorder (% diagnosis, n)",
+  "Self-reported other mental health disorder (% diagnosis, n)",
+  "Age of onset (years, sd)",
+  "Recurrence (number of episodes, sd)",
+  "Current depression (total score, sd)",
+  "Current anxiety (total score, sd)",
+  "Anxiety PRS (total score, sd)",
+  "MDD PRS (total score, sd)",
+  "Neuroticism PRS (total score, sd)",
+  "ADHD PRS (total score, sd)",
+  "Autism PRS (total score, sd)",
+  "Schizophrenia PRS (total score, sd)",
+  "Educational attainment PRS (total score, sd)"
+  )
+```
+
+```{r continuous variables vector, include=FALSE}
+#Create vector to order factor
+Variable_continuous_ordered <- c(
+  "Age (years, sd)",
+  "Current depression (total score, sd)",
+  "Current anxiety (total score, sd)",
+  "Age of onset (years, sd)",
+  "Recurrence (number of episodes, sd)",
+  "Anxiety PRS (total score, sd)",
+  "MDD PRS (total score, sd)",
+  "Neuroticism PRS (total score, sd)",
+  "ADHD PRS (total score, sd)",
+  "Autism PRS (total score, sd)",
+  "Schizophrenia PRS (total score, sd)",
+  "Educational attainment PRS (total score, sd)"
+  )
+```
+
+# Descriptives by sample
+
+## Table
+
+Create tables for all descriptives by sample  
+
+*Continuous (or count) variables include:*  
+- Age (dem.age)  
+- PHQ9 sum score (phq9.sum_score)  
+- GAD7 sum score (gad7.sum_score)     
+- Age of onset (min_age_of_onset)  
+- Recurence (max_recurrence)  
+- Anxiety PRS  
+- Depression PRS  
+- NeuroticismPRS  
+- ADHD PRS  
+- Autism PRS  
+- Schizophrenia PR  
+- Educational attainment PRS  
+
+```{r Continuous variables table by cohort, include=FALSE}
+#Create table
+numeric_table_by_cohort <- dat %>% 
+  group_by(sample_factor) %>%
+  summarise_at(
+    vars(
+      dem.age,
+      phq9.sum_score,
+      gad7.sum_score,
+      min_age_of_onset,
+      max_recurrence,
+      anxietyPRS_z,
+      depression05_PRS_z,
+      neuroticismPRS_z,
+      adhdPRS_z,
+      autismPRS_z,
+      schizophreniaPRS_z,
+      educationPRS_z
+      ),
+    .funs =
+      list(
+        ~mean(., na.rm = T),
+        ~sd(., na.rm = T),
+        mode = ~mode_func(., na.rm = T),
+        ~median(., na.rm = T),
+        quartile1 = ~quantile(., probs = 0.25, na.rm = T),
+        quartile3 = ~quantile(., probs = 0.75, na.rm = T),
+        ~min(., na.rm = T),
+        ~max(., na.rm = T),
+        missing = ~n_missing(.),
+        ~skew(., na.rm = T),
+        kurtosis = ~kurtosi(., na.rm = T)
+      )
+  ) %>% 
+  arrange(sample_factor)
+
+numeric_table_by_cohort
+```
+
+```{r Continuous variables reshape table, include=FALSE}
+#Reshape continuous data table - make wide data long 
+numeric_table_by_cohort_reshaped <- numeric_table_by_cohort %>% 
+  gather(key, value, -sample_factor) %>% 
+  separate(
+    key,
+    c("variable", "measure"),
+    sep = "_(?=[^_]+$)" # separate by last _
+    ) %>% #separates the column 'key' into 'variable' and 'column' measure, indicated as they are separated by _
+  mutate(measure = factor(
+    x = measure,
+    levels =  c( # this is the order I want my columns to appear in
+     "missing",
+     "min",
+     "max",
+     "mean", 
+     "median",
+     "quartile1",
+     "quartile3",
+     "mode",
+     "sd",
+     "skew",
+     "kurtosis"
+    ))) %>% 
+  spread(measure, value) #spread to get mean, mode and median column etc
+
+
+numeric_table_by_cohort_reshaped
+```
+
+```{r Continuous reduce table to means and sd, include=FALSE}
+numeric_table_by_cohort_reshaped_reduced_nonparametric <- numeric_table_by_cohort_reshaped %>%
+  mutate(
+    "Variable" = fct_recode(
+      .f = variable,
+      "Age (years, sd)" = "dem.age",
+      "Current depression (total score, sd)" = "phq9.sum_score",
+      "Current anxiety (total score, sd)" = "gad7.sum_score",
+      "Age of onset (years, sd)" = "min_age_of_onset",
+      "Recurrence (number of episodes, sd)" = "max_recurrence",
+      "Anxiety PRS (total score, sd)" = "anxietyPRS_z",
+      "MDD PRS (total score, sd)" = "depression05_PRS_z",
+      "Neuroticism PRS (total score, sd)" = "neuroticismPRS_z",
+      "ADHD PRS (total score, sd)" = "adhdPRS_z",
+      "Autism PRS (total score, sd)" = "autismPRS_z",
+      "Schizophrenia PRS (total score, sd)" = "schizophreniaPRS_z",
+      "Educational attainment PRS (total score, sd)" = "educationPRS_z"
+),
+    "Variable" = fct_relevel(
+      .f = Variable,
+      Variable_continuous_ordered
+      ),
+    "Mean" = case_when(
+      mean >= 1 ~ round(mean, digits = 1),
+      mean < 1 ~ round(mean, digits = 2)
+    ),
+    "SD" = case_when(
+      sd >= 1 ~ round(sd, digits = 1),
+      sd < 1 ~ round(sd, digits = 2)
+    ),
+  ) %>%
+  select(
+    "Comorbidity grouping" = sample_factor,
+    Variable,
+    "Mean",
+    "SD",
+  ) %>%
+  arrange(Variable) %>%
+  arrange(`Comorbidity grouping`) %>%
+  mutate(Value = paste0(format(`Mean`, nsmall = 1), " (",format(`SD`,2, nsmall = 1),")")) %>%
+  select(
+    "Comorbidity grouping",
+    "Variable",
+    "Value") %>%
+  pivot_wider(
+   names_from = "Comorbidity grouping",
+    values_from = Value
+   )
+  
+
+kable(numeric_table_by_cohort_reshaped_reduced_nonparametric)
+```
+
+```{r Continuous variables table full sample, include=FALSE}
+#Create table
+numeric_table_full_sample <- dat %>% 
+  mutate(full_sample = "Full sample") %>% 
+  group_by(full_sample) %>% 
+  summarise_at(
+    vars(
+      dem.age,
+      phq9.sum_score,
+      gad7.sum_score,
+      min_age_of_onset,
+      max_recurrence,
+      anxietyPRS_z,
+      depression05_PRS_z,
+      neuroticismPRS_z,
+      adhdPRS_z,
+      autismPRS_z,
+      schizophreniaPRS_z,
+      educationPRS_z
+      ),
+    .funs =
+      list(
+        ~mean(., na.rm = T),
+        ~sd(., na.rm = T)#,
+        # mode = ~mode_func(., na.rm = T),
+        # ~median(., na.rm = T),
+        # quartile1 = ~quantile(., probs = 0.25, na.rm = T),
+        # quartile3 = ~quantile(., probs = 0.75, na.rm = T),
+        # ~min(., na.rm = T),
+        # ~max(., na.rm = T),
+        # missing = ~n_missing(.),
+        # ~skew(., na.rm = T),
+        # kurtosis = ~kurtosi(., na.rm = T)
+      )
+  ) 
+
+numeric_table_full_sample
+```
+
+```{r Continuous variables full sample reshape table, include=FALSE}
+#Reshape continuous data table - make wide data long 
+numeric_table_full_sample_reshaped <- numeric_table_full_sample %>% 
+  gather(key, value, -full_sample) %>% 
+  separate(
+    key,
+    c("variable", "measure"),
+    sep = "_(?=[^_]+$)" # separate by last _
+    ) %>% #separates the column 'key' into 'variable' and 'column' measure, indicated as they are separated by _
+  mutate(measure = factor(
+    x = measure,
+    levels =  c( # this is the order I want my columns to appear in
+     # "missing",
+     # "min",
+     # "max",
+     "mean", 
+     # "median",
+     # "quartile1",
+     # "quartile3",
+     # "mode",
+     "sd"#,
+     # "skew",
+     # "kurtosis"
+    ))) %>% 
+  spread(measure, value) #spread to get mean, mode and median column etc
+
+
+numeric_table_full_sample_reshaped
+```
+
+```{r Continuous reduce full sample table to means and sd, include=FALSE}
+numeric_table_full_sample_reshaped_reduced_nonparametric <- numeric_table_full_sample_reshaped %>%
+  mutate(
+    "Variable" = fct_recode(
+      .f = variable,
+      "Age (years, sd)" = "dem.age",
+      "Current depression (total score, sd)" = "phq9.sum_score",
+      "Current anxiety (total score, sd)" = "gad7.sum_score",
+      "Age of onset (years, sd)" = "min_age_of_onset",
+      "Recurrence (number of episodes, sd)" = "max_recurrence",
+      "Anxiety PRS (total score, sd)" = "anxietyPRS_z",
+      "MDD PRS (total score, sd)" = "depression05_PRS_z",
+      "Neuroticism PRS (total score, sd)" = "neuroticismPRS_z",
+      "ADHD PRS (total score, sd)" = "adhdPRS_z",
+      "Autism PRS (total score, sd)" = "autismPRS_z",
+      "Schizophrenia PRS (total score, sd)" = "schizophreniaPRS_z",
+      "Educational attainment PRS (total score, sd)" = "educationPRS_z"
+),
+    "Variable" = fct_relevel(
+      .f = Variable,
+      Variable_continuous_ordered
+      ),
+    "Mean" = case_when(
+      mean >= 1 ~ round(mean, digits = 1),
+      mean < 1 ~ round(mean, digits = 2)
+    ),
+    "SD" = case_when(
+      sd >= 1 ~ round(sd, digits = 1),
+      sd < 1 ~ round(sd, digits = 2)
+    ),
+  ) %>%
+  select(
+    "Comorbidity grouping" = full_sample,
+    Variable,
+    "Mean",
+    "SD",
+  ) %>%
+  arrange(Variable) %>%
+  arrange(`Comorbidity grouping`) %>%
+  mutate(Value = paste0(format(`Mean`, nsmall = 1), " (",format(`SD`,2, nsmall = 1),")")) %>%
+  select(
+    "Comorbidity grouping",
+    "Variable",
+    "Value") %>%
+  pivot_wider(
+   names_from = "Comorbidity grouping",
+    values_from = Value
+   )
+  
+
+kable(numeric_table_full_sample_reshaped_reduced_nonparametric)
+```
+
+Create tables for categorical variable frequencies    
+
+*Catgorical variables include:*  
+- Sex  
+- Ethnicity  
+- Highest education 
+- Childhood trauma  
+- Adult trauma  
+- Catastrophic trauma  
+- Family history of anx/dep  
+- Family history of other MH disorder  
+- Self-reported anx/dep disorder  
+- Self-reported other MH disorders  
+
+```{r sex per sample_factor prop for table, include=FALSE}
+#sex grouped by sample_factor proportions per sample_factor group/level
+sex_per_sample_factor_prop_table_by_cohort <- dat %>%
+  group_by(sample_factor) %>%
+  count(dem.sex, sample_factor) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(sample_factor, dem.sex, Value) %>% 
+  pivot_wider(names_from = sample_factor,
+              values_from = Value) %>% 
+  filter(dem.sex == "Female") %>% 
+  mutate(Variable = "Sex (% female, n)") %>% 
+  select(-dem.sex)
+
+sex_per_sample_factor_prop_table_by_cohort
+```
+
+```{r sex prop full sample for table, include=FALSE}
+#sex proportions full sample
+sex_prop_table_full_sample <- dat %>%
+  count(dem.sex) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")"),
+    sample_factor = "Full sample"
+  ) %>% 
+  select(sample_factor, dem.sex, Value) %>% 
+  pivot_wider(names_from = sample_factor,
+              values_from = Value) %>% 
+  filter(dem.sex == "Female") %>% 
+  mutate(Variable = "Sex (% female, n)") %>% 
+  select(-dem.sex)
+
+sex_prop_table_full_sample
+```
+
+```{r ethnicity per sample_factor prop for table, include=FALSE}
+#ethnicity grouped by sample_factor proportions per sample_factor group/level
+ethnicity_per_sample_factor_prop_table_by_cohort <- dat %>%
+  group_by(sample_factor) %>%
+  count(dem.ethnicity_collapsed, sample_factor) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(sample_factor, dem.ethnicity_collapsed, Value) %>% 
+  pivot_wider(names_from = sample_factor,
+              values_from = Value) %>% 
+  filter(dem.ethnicity_collapsed == "White") %>% 
+  mutate(Variable = "Ethnicity (% white, n)") %>% 
+  select(-dem.ethnicity_collapsed)
+
+
+ethnicity_per_sample_factor_prop_table_by_cohort
+```
+
+```{r ethnicity prop full sample for table, include=FALSE}
+#ethnicity proportions full sample
+ethnicity_prop_table_full_sample <- dat %>%
+  count(dem.ethnicity) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")"),
+    sample_factor = "Full sample"
+  ) %>% 
+  select(sample_factor, dem.ethnicity, Value) %>% 
+  pivot_wider(names_from = sample_factor,
+              values_from = Value) %>% 
+  filter(dem.ethnicity == "White") %>% 
+  mutate(Variable = "Ethnicity (% white, n)") %>% 
+  select(-dem.ethnicity)
+
+ethnicity_prop_table_full_sample
+```
+
+```{r highest education per sample_factor prop for table, include=FALSE}
+#highest education grouped by sample_factor proportions per sample_factor group/level
+highest_education_per_sample_factor_prop_table_by_cohort <- dat %>%
+  group_by(sample_factor) %>%
+  count(dem.highest_education_ordered_collapsed, sample_factor) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+      Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(sample_factor, dem.highest_education_ordered_collapsed, Value) %>% 
+  pivot_wider(names_from = sample_factor,
+              values_from = Value) %>% 
+  filter(dem.highest_education_ordered_collapsed == "College or university degree" |
+           dem.highest_education_ordered_collapsed == "A levels/AS levels or equivalent"|
+           dem.highest_education_ordered_collapsed == "O levels/GCSEs or equivalent" |
+           dem.highest_education_ordered_collapsed == "No qualifications") %>% 
+  mutate(Variable = case_when(
+    dem.highest_education_ordered_collapsed == "College or university degree" ~ "Highest education: University degree (%, n)",
+    dem.highest_education_ordered_collapsed == "A levels/AS levels or equivalent" ~ "Highest education: A-levels (%, n)",
+    dem.highest_education_ordered_collapsed == "O levels/GCSEs or equivalent" ~ "Highest education: GCSEs (%, n)",
+    dem.highest_education_ordered_collapsed == "No qualifications"  ~ "Highest education: No qualifications (%, n)"
+    )
+  ) %>% 
+  select(-dem.highest_education_ordered_collapsed)
+
+highest_education_per_sample_factor_prop_table_by_cohort
+```
+
+```{r highest education prop full sample for table, include=FALSE}
+#highest education proportions full sample
+highest_education_prop_table_full_sample <- dat %>%
+  count(dem.highest_education_ordered_collapsed) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+      Value = paste0(Prop*100," (", n,")"),
+    sample_factor = "Full sample"
+  ) %>% 
+  select(sample_factor, dem.highest_education_ordered_collapsed, Value) %>% 
+  pivot_wider(names_from = sample_factor,
+              values_from = Value) %>% 
+  filter(dem.highest_education_ordered_collapsed == "College or university degree" |
+           dem.highest_education_ordered_collapsed == "A levels/AS levels or equivalent"|
+           dem.highest_education_ordered_collapsed == "O levels/GCSEs or equivalent" |
+           dem.highest_education_ordered_collapsed == "No qualifications") %>% 
+  mutate(Variable = case_when(
+    dem.highest_education_ordered_collapsed == "College or university degree" ~ "Highest education: University degree (%, n)",
+    dem.highest_education_ordered_collapsed == "A levels/AS levels or equivalent" ~ "Highest education: A-levels (%, n)",
+    dem.highest_education_ordered_collapsed == "O levels/GCSEs or equivalent" ~ "Highest education: GCSEs (%, n)",
+    dem.highest_education_ordered_collapsed == "No qualifications"  ~ "Highest education: No qualifications (%, n)"
+    )
+  ) %>% 
+  select(-dem.highest_education_ordered_collapsed)
+
+highest_education_prop_table_full_sample
+```
+
+```{r any childhood trauma per sample_factor prop for table, include=FALSE}
+#childhood trauma (child maltreatment) grouped by sample_factor proportions per sample_factor group/level
+childhood_trauma_per_sample_factor_prop_table_by_cohort <- dat %>%
+  group_by(sample_factor) %>%
+  count(cts.any_maltreatment_binary, sample_factor) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>%
+  mutate(
+    Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(sample_factor, 
+         cts.any_maltreatment_binary, 
+         Value) %>% 
+  pivot_wider(names_from = sample_factor,
+              values_from = Value) %>% 
+  filter(cts.any_maltreatment_binary == "Childhood maltreatment") %>% 
+  mutate(Variable = case_when(
+    cts.any_maltreatment_binary == "Childhood maltreatment" ~ "Childhood trauma (% present, n)"
+    )
+  ) %>% 
+  select(-cts.any_maltreatment_binary)
+
+childhood_trauma_per_sample_factor_prop_table_by_cohort
+```
+
+```{r childhood_trauma prop full sample for table, include=FALSE}
+#childhood_trauma proportions full sample
+childhood_trauma_prop_table_full_sample <- dat %>%
+  count(cts.any_maltreatment_binary) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")"),
+    sample_factor = "Full sample"
+  ) %>% 
+  select(sample_factor, cts.any_maltreatment_binary, Value) %>% 
+  pivot_wider(names_from = sample_factor,
+              values_from = Value) %>% 
+  filter(cts.any_maltreatment_binary == "Childhood maltreatment") %>% 
+  mutate(Variable = case_when(
+    cts.any_maltreatment_binary == "Childhood maltreatment" ~ "Childhood trauma (% present, n)"
+    )
+  ) %>% 
+  select(-cts.any_maltreatment_binary)
+
+childhood_trauma_prop_table_full_sample
+```
+
+```{r any adult trauma per sample_factor prop for table, include=FALSE}
+#adult trauma (partner abuse) grouped by sample_factor proportions per sample_factor group/level
+adult_trauma_per_sample_factor_prop_table_by_cohort <- dat %>%
+  group_by(sample_factor) %>%
+  count(ats.partner_abuse_binary, sample_factor) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(sample_factor, 
+         ats.partner_abuse_binary, 
+         Value) %>% 
+  pivot_wider(names_from = sample_factor,
+              values_from = Value) %>% 
+  filter(ats.partner_abuse_binary == "Partner abuse") %>% 
+  mutate(Variable = case_when(
+    ats.partner_abuse_binary == "Partner abuse" ~ "Adult trauma (% present, n)"
+    )
+  ) %>% 
+  select(-ats.partner_abuse_binary)
+
+adult_trauma_per_sample_factor_prop_table_by_cohort
+```
+
+```{r adult_trauma prop full sample for table, include=FALSE}
+#adult_trauma proportions full sample
+adult_trauma_prop_table_full_sample <- dat %>%
+  count(ats.partner_abuse_binary) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")"),
+    sample_factor = "Full sample"
+  ) %>% 
+  select(sample_factor, ats.partner_abuse_binary, Value) %>% 
+  pivot_wider(names_from = sample_factor,
+              values_from = Value) %>% 
+  filter(ats.partner_abuse_binary == "Partner abuse") %>% 
+  mutate(Variable = case_when(
+    ats.partner_abuse_binary == "Partner abuse" ~ "Adult trauma (% present, n)"
+    )
+  ) %>% 
+  select(-ats.partner_abuse_binary)
+
+adult_trauma_prop_table_full_sample
+```
+
+```{r any catastrophic trauma per sample_factor prop for table, include=FALSE}
+#catastrophic trauma (partner abuse) grouped by sample_factor proportions per sample_factor group/level
+catastrophic_trauma_per_sample_factor_prop_table_by_cohort <- dat %>%
+  group_by(sample_factor) %>%
+  count(ats.catastrophic_trauma_binary, sample_factor) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(sample_factor, 
+         ats.catastrophic_trauma_binary, 
+         Value) %>% 
+  pivot_wider(names_from = sample_factor,
+              values_from = Value) %>% 
+  filter(ats.catastrophic_trauma_binary == "Catastrophic trauma") %>% 
+  mutate(Variable = "Catastrophic trauma (% present, n)") %>% 
+  select(-ats.catastrophic_trauma_binary)
+
+catastrophic_trauma_per_sample_factor_prop_table_by_cohort
+```
+
+```{r any catastrophic trauma prop full sample for table, include=FALSE}
+#catastrophic trauma (partner abuse) proportions full sample
+catastrophic_trauma_prop_table_full_sample <- dat %>%
+  count(ats.catastrophic_trauma_binary) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")"),
+    sample_factor = "Full sample"
+  ) %>% 
+  select(sample_factor, 
+         ats.catastrophic_trauma_binary, 
+         Value) %>% 
+  pivot_wider(names_from = sample_factor,
+              values_from = Value) %>% 
+  filter(ats.catastrophic_trauma_binary == "Catastrophic trauma") %>% 
+  mutate(Variable = "Catastrophic trauma (% present, n)") %>% 
+  select(-ats.catastrophic_trauma_binary)
+
+catastrophic_trauma_prop_table_full_sample
+```
+
+```{r family history anx/dep per sample_factor prop for table, include=FALSE}
+#family history anx/dep grouped by sample_factor proportions per sample_factor group/level
+mhfh_anx_dep_per_sample_factor_prop_table_by_cohort <- dat %>%
+  group_by(sample_factor) %>%
+  count(mhfh.anxiety_or_depression, sample_factor) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(sample_factor, mhfh.anxiety_or_depression, Value) %>% 
+  pivot_wider(names_from = sample_factor,
+              values_from = Value) %>% 
+  filter(mhfh.anxiety_or_depression == "Positive family history") %>% 
+  mutate(Variable = "Family history: Anxiety/depressive disorder (% positive, n)") %>% 
+  select(-mhfh.anxiety_or_depression)
+
+mhfh_anx_dep_per_sample_factor_prop_table_by_cohort
+```
+
+```{r family history anx/dep prop full sample for table, include=FALSE}
+#family history anx/dep proportions full sample
+mhfh_anx_dep_prop_table_full_sample <- dat %>%
+  count(mhfh.anxiety_or_depression) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")"),
+    sample_factor = "Full sample"
+  ) %>% 
+  select(sample_factor, mhfh.anxiety_or_depression, Value) %>% 
+  pivot_wider(names_from = sample_factor,
+              values_from = Value) %>% 
+  filter(mhfh.anxiety_or_depression == "Positive family history") %>% 
+  mutate(Variable = "Family history: Anxiety/depressive disorder (% positive, n)") %>% 
+  select(-mhfh.anxiety_or_depression)
+
+mhfh_anx_dep_prop_table_full_sample
+```
+
+```{r family history other per sample_factor prop for table, include=FALSE}
+#family history other grouped by sample_factor proportions per sample_factor group/level
+mhfh_other_per_sample_factor_prop_table_by_cohort <- dat %>%
+  group_by(sample_factor) %>%
+  count(mhfh.other_disorders, sample_factor) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(sample_factor, mhfh.other_disorders, Value) %>% 
+  pivot_wider(names_from = sample_factor,
+              values_from = Value) %>% 
+  filter(mhfh.other_disorders == "Positive family history") %>% 
+  mutate(Variable = "Family history: Other mental health disorder (% positive, n)") %>% 
+  select(-mhfh.other_disorders)
+
+mhfh_other_per_sample_factor_prop_table_by_cohort
+```
+
+```{r family history other prop full sample for table, include=FALSE}
+#family history other proportions full sample
+mhfh_other_prop_table_full_sample <- dat %>%
+  count(mhfh.other_disorders) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")"),
+    sample_factor = "Full sample"
+  ) %>% 
+  select(sample_factor, mhfh.other_disorders, Value) %>% 
+  pivot_wider(names_from = sample_factor,
+              values_from = Value) %>% 
+  filter(mhfh.other_disorders == "Positive family history") %>% 
+  mutate(Variable = "Family history: Other mental health disorder (% positive, n)") %>% 
+  select(-mhfh.other_disorders)
+
+mhfh_other_prop_table_full_sample
+```
+
+```{r self-reported anx/dep per sample_factor prop for table, include=FALSE}
+#self-reported anx/dep grouped by sample_factor proportions per sample_factor group/level
+mhd_anx_dep_per_sample_factor_prop_table_by_cohort <- dat %>%
+  group_by(sample_factor) %>%
+  count(mhd.anxiety_depression, sample_factor) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(sample_factor, mhd.anxiety_depression, Value) %>% 
+  pivot_wider(names_from = sample_factor,
+              values_from = Value) %>% 
+  filter(mhd.anxiety_depression == "Diagnosis") %>% 
+  mutate(Variable = "Self-reported anxiety/depressive disorder (% diagnosis, n)") %>% 
+  select(-mhd.anxiety_depression)
+
+mhd_anx_dep_per_sample_factor_prop_table_by_cohort
+```
+
+```{r self-reported anx/dep prop full sample for table, include=FALSE}
+#self-reported anx/dep proportions for full sample
+mhd_anx_dep_prop_table_full_sample <- dat %>%
+  count(mhd.anxiety_depression) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")"),
+    sample_factor = "Full sample"
+  ) %>% 
+  select(sample_factor, mhd.anxiety_depression, Value) %>% 
+  pivot_wider(names_from = sample_factor,
+              values_from = Value) %>% 
+  filter(mhd.anxiety_depression == "Diagnosis") %>% 
+  mutate(Variable = "Self-reported anxiety/depressive disorder (% diagnosis, n)") %>% 
+  select(-mhd.anxiety_depression)
+
+mhd_anx_dep_prop_table_full_sample
+```
+
+```{r self-reported other diag per sample_factor prop for table, include=FALSE}
+#self-reported other diag grouped by sample_factor proportions per sample_factor group/level
+mhd_other_per_sample_factor_prop_table_by_cohort <- dat %>%
+  group_by(sample_factor) %>%
+  count(mhd.other_diagnoses, sample_factor) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(sample_factor, mhd.other_diagnoses, Value) %>% 
+  pivot_wider(names_from = sample_factor,
+              values_from = Value) %>% 
+  filter(mhd.other_diagnoses == "Diagnosis") %>% 
+  mutate(Variable = "Self-reported other mental health disorder (% diagnosis, n)") %>% 
+  select(-mhd.other_diagnoses)
+
+mhd_other_per_sample_factor_prop_table_by_cohort
+```
+
+```{r self-reported other diag per sample_factor prop for table, include=FALSE}
+#self-reported other diag proportions for full sample
+mhd_other_prop_table_full_sample <- dat %>%
+  count(mhd.other_diagnoses) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")"),
+    sample_factor = "Full sample"
+  ) %>% 
+  select(sample_factor, mhd.other_diagnoses, Value) %>% 
+  pivot_wider(names_from = sample_factor,
+              values_from = Value) %>% 
+  filter(mhd.other_diagnoses == "Diagnosis") %>% 
+  mutate(Variable = "Self-reported other mental health disorder (% diagnosis, n)") %>% 
+  select(-mhd.other_diagnoses)
+
+mhd_other_prop_table_full_sample
+```
+
+```{r combined categorical table by cohort, include=FALSE}
+categorical_table_by_cohort <- sex_per_sample_factor_prop_table_by_cohort %>% 
+  rbind(ethnicity_per_sample_factor_prop_table_by_cohort,
+        highest_education_per_sample_factor_prop_table_by_cohort,
+        mhfh_anx_dep_per_sample_factor_prop_table_by_cohort,
+        mhfh_other_per_sample_factor_prop_table_by_cohort,
+        childhood_trauma_per_sample_factor_prop_table_by_cohort,
+        adult_trauma_per_sample_factor_prop_table_by_cohort,
+        catastrophic_trauma_per_sample_factor_prop_table_by_cohort,
+        mhd_anx_dep_per_sample_factor_prop_table_by_cohort,
+        mhd_other_per_sample_factor_prop_table_by_cohort) %>% 
+  select(Variable, `GLAD`, `NBR`)
+
+categorical_table_by_cohort
+```
+
+```{r combined categorical table full sample, include=FALSE}
+categorical_table_full_sample <- sex_prop_table_full_sample %>% 
+  rbind(ethnicity_prop_table_full_sample,
+        highest_education_prop_table_full_sample,
+        mhfh_anx_dep_prop_table_full_sample,
+        mhfh_other_prop_table_full_sample,
+        childhood_trauma_prop_table_full_sample,
+        adult_trauma_prop_table_full_sample,
+        catastrophic_trauma_prop_table_full_sample,
+        mhd_anx_dep_prop_table_full_sample,
+        mhd_other_prop_table_full_sample) %>% 
+  select(Variable, `Full sample`)
+
+categorical_table_full_sample
+```
+
+```{r by cohort combined all analyses continuous/categorical variable tables, echo=FALSE}
+#Merge descriptive tables
+descriptives_by_sample <- rbind(numeric_table_by_cohort_reshaped_reduced_nonparametric,
+                      categorical_table_by_cohort) %>% 
+  select(Variable, `GLAD`, `NBR`) %>% 
+  mutate("Variable" = fct_relevel(
+      .f = Variable,
+      Variable_ordered
+      )
+  ) %>% 
+  arrange(Variable)
+
+#kable(descriptives_by_sample)
+descriptives_by_sample
+```
+
+```{r full sample combined all analyses continuous/categorical variable tables, echo=FALSE}
+#Merge descriptive tables
+descriptives_full_sample <- rbind(numeric_table_full_sample_reshaped_reduced_nonparametric,
+                      categorical_table_full_sample) %>% 
+  select(Variable, `Full sample`) %>% 
+  mutate("Variable" = fct_relevel(
+      .f = Variable,
+      Variable_ordered
+      )
+  ) %>% 
+  arrange(Variable)
+
+#kable(descriptives_full_sample)
+descriptives_full_sample
+```
+
+```{r combine by cohort and full sample descriptives tables}
+descriptives_by_cohort_full_sample <- merge(descriptives_by_sample,
+                                            descriptives_full_sample,
+                                            by = "Variable") %>% 
+  mutate("Variable" = fct_relevel(
+      .f = Variable,
+      Variable_ordered
+      )
+  ) %>% 
+  arrange(Variable)
+
+kable(descriptives_by_cohort_full_sample)
+```
+
+
+# Diagnosis frequencies by sample
+
+```{r diagnosis data in long format by sample}
+dat.long_by_sample <- dat %>%
+  mutate(sample = recode_factor(sample,
+                                "GLAD" = "GLAD",
+                                "NBR" = "COPING NBR")) %>% 
+  select(sample, 
+         ends_with("diagnosis_numeric"), 
+         c(anxiety_disorder_numeric), 
+         -c(spec.environment_phobia_diagnosis_numeric, spec.situation_phobia_diagnosis_numeric, spec.animal_phobia_diagnosis_numeric, spec.blood_injection_phobia_diagnosis_numeric, spec.other_phobia_diagnosis_numeric)) %>%
+  gather(
+    key = "Diagnosis.unc",
+    value = "Response",
+    cidid.diagnosis_numeric:agp.diagnosis_numeric, anxiety_disorder_numeric
+    ) %>% 
+  mutate(Response_factor =
+           recode_factor(Response,
+             "1" = "Diagnosis",
+             "0" = "No diagnosis"
+           ),
+         Diagnosis = 
+           recode_factor(Diagnosis.unc,
+             "cidid.diagnosis_numeric" = "MDD",
+             "anxiety_disorder_numeric" = "Any anxiety*",
+             "cidia.diagnosis_numeric" = "GAD",
+             "spec.diagnosis_numeric" = "Specific phobia",
+             "socp.diagnosis_numeric" = "Social anxiety disorder",
+             "panic_attacks.diagnosis_numeric" = "Panic attacks**",
+             "pad.diagnosis_numeric" = "Panic disorder",
+             "agp.diagnosis_numeric" = "Agoraphobia"
+           )
+         )
+
+head(dat.long_by_sample)
+tail(dat.long_by_sample)
+```
+
+```{r long format for full sample}
+
+#Put in long format without sample column
+dat.long_full <- dat %>%
+  select(ends_with("diagnosis_numeric"), 
+         c(anxiety_disorder_numeric), 
+         -c(spec.environment_phobia_diagnosis_numeric, spec.situation_phobia_diagnosis_numeric, spec.animal_phobia_diagnosis_numeric, spec.blood_injection_phobia_diagnosis_numeric, spec.other_phobia_diagnosis_numeric)) %>%
+  gather(
+    key = "Diagnosis.unc",
+    value = "Response",
+    cidid.diagnosis_numeric:agp.diagnosis_numeric, anxiety_disorder_numeric
+    ) %>% 
+  mutate(Response_factor =
+           recode_factor(Response,
+             "1" = "Diagnosis",
+             "0" = "No diagnosis"
+           ),
+         Diagnosis = 
+           recode_factor(Diagnosis.unc,
+             "cidid.diagnosis_numeric" = "MDD",
+             "anxiety_disorder_numeric" = "Any anxiety*",
+             "cidia.diagnosis_numeric" = "GAD",
+             "spec.diagnosis_numeric" = "Specific phobia",
+             "socp.diagnosis_numeric" = "Social anxiety disorder",
+             "panic_attacks.diagnosis_numeric" = "Panic attacks**",
+             "pad.diagnosis_numeric" = "Panic disorder",
+             "agp.diagnosis_numeric" = "Agoraphobia"
+           )
+         )
+
+#Add sample column with "full sample" label
+dat.long_full <- dat.long_full %>% 
+  mutate(sample = "Full sample")
+```
+
+```{r merge both long format datasets}
+#Merge
+dat.long <- bind_rows(dat.long_by_sample, 
+                      dat.long_full)
+
+#Set sample factor order for graph
+dat.long$sample <- fct_relevel(dat.long$sample, 
+                                            c("Full sample", "GLAD", "COPING NBR"))
+```
+
+
+```{r counts of diagnoses}
+counts_diagnoses <- dat.long %>%
+  group_by(sample, Diagnosis, Response_factor) %>% 
+  drop_na() %>% 
+  summarise(count = n())
+
+counts_diagnoses
+```
+
+```{r counts with %}
+
+counts_diagnoses_percents <- counts_diagnoses %>% 
+  group_by(sample, Diagnosis) %>% 
+  mutate(per=as.numeric(paste0(round(count/sum(count), 3)))) %>% 
+  ungroup
+
+counts_diagnoses_percents
+```
+
+```{r counts with % drop no diagnosis}
+counts_diagnosis_only <- counts_diagnoses_percents %>% 
+  filter(Response_factor == "Diagnosis")
+
+counts_diagnosis_only
+```
+
+```{r diagnoses barchart full sample}
+
+bar_diagnoses <- ggplot(counts_diagnosis_only, aes(y = per, x = reorder(Diagnosis, desc(Diagnosis)))) + 
+  geom_bar(
+    stat = "identity", 
+    position = "dodge",
+    width = 0.85,
+    fill = "#b7dee8") +
+  geom_text(
+    aes(
+      label = ifelse(per > 0.01, scales::percent(per,accuracy=1), 
+                     scales::percent(per,accuracy=0.1)
+                     )
+      ),
+    size = 2, 
+    position = position_dodge(width = 1),
+    hjust = -0.1,
+    vjust = 0.5) + #Add % labels on top of bars
+  labs(#title = "Title",
+       #subtitle = paste0("Full sample (N = ", nrow(dat),"), ",
+       #                  "GLAD (N = ", 
+       #                  nrow(filter(dat, sample=="GLAD")), "), ",
+       #                  "COPING NBR (N = ", 
+       #                  nrow(filter(dat, sample=="NBR")), ")"),
+       y = "Percent of sample",
+       fill = element_blank()) + #Remove legend title
+  coord_flip() + #Flip x and y axis
+  theme(
+    #plot.title = element_text(face = "bold",
+                                  #size = 12),
+    #plot.subtitle = element_text(face = "italic",
+    #                                 size = 10),
+    text = element_text(color = "black",
+                        size = 8),
+    #axis.title = element_text(color = "black"),
+    axis.text = element_text(color = "black",
+                             margin = 0),
+    #axis.ticks.x.margin = unit(0, "cm"),
+    axis.title = element_blank(),
+    axis.ticks = element_blank(),
+    legend.background = element_blank(),
+    legend.box.background = element_blank(),
+    legend.position = "bottom",
+    plot.margin = margin(5, 20, 5, 5),
+    panel.background = element_blank(), 
+    panel.grid.minor = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(
+      colour = "grey",
+      linetype = "dashed",
+      size = 0.2
+      ),
+    strip.background = element_rect(fill="#efc00b")
+    ) +
+  guides(fill = guide_legend(reverse=TRUE)) + #Make the legend match the factor ordering
+  scale_color_manual(values = GLADpalette) +
+  #scale_fill_manual(values = GLADpalette) +
+  scale_y_continuous(limits = c(0, 1), #Y-axis goes from 0-1
+                     breaks=seq(0,1, 0.1), #Y-axis goes from 0 - 1, with tick marks every 0.1
+                     labels = scales::percent_format(accuracy = 5L), #Makes y-axis % and removes decimals
+                     expand = c(0,0)) + #Removes extra space after 0 on x axis
+  facet_wrap(~sample,
+             ncol = 1,
+             nrow = 3)
+
+
+
+bar_diagnoses
+```
+
+```{r save diagnosis barchart}
+#grDevices::dev.set(1)
+
+#Save jpeg of diagnosis barchart
+ggsave(paste0("barchart_diagnoses_", Sys.Date(), ".jpeg"),
+       path = figure_path,
+       plot = bar_diagnoses,
+       width = 6,
+       height = 5.5,
+       dpi = 150,
+       units = "in")
+
+#Save tiff of diagnosis barchart
+ggsave(paste0("barchart_diagnoses_", Sys.Date(), ".tiff"),
+      path = figure_path,
+      plot = bar_diagnoses,
+      width = 6,
+      height = 5.5,
+      dpi = 150,
+      units = "in")
+```
+
+
+# Descriptives of comorbidity grouping variables in the sample
+
+Get mean diagnoses
+```{r mean algorithm-based diagnoses}
+mean(dat$algorithm_based_count_numeric, na.rm = T)
+```
+
+Check the frequencies in the sample to see:
+*Anxiety/depression*
+- N single anxiety
+- N MDD only
+- N anxiety-MDD
+- N anxiety-anxiety
+
+```{r N anxiety/depression groupings}
+anxdep_groupings_descriptives.raw <- dat %>% #create object to bind later on
+  drop_na(all_anxiety_depression) %>% 
+  count(sample, all_anxiety_depression) %>%
+  mutate(Prop_all = round(n/sum(n)*100, 2)) %>%
+  group_by(sample) %>% 
+  mutate(Prop = round(n/sum(n)*100, 2)) %>% 
+  pivot_wider(names_from = sample, values_from = c(n, Prop_all, Prop)) %>%
+  #mutate_if(is.numeric, ~replace(., is.na(.), 0)) %>% 
+  mutate(Total = n_GLAD + n_NBR,
+         Prop_total = Prop_all_GLAD + Prop_all_NBR) %>% 
+  select(-Prop_all_GLAD, -Prop_all_NBR,
+    "Descriptive" = all_anxiety_depression,
+    "GLAD" = n_GLAD,
+    "% GLAD" = Prop_GLAD,
+    "COPING NBR" = n_NBR,
+    "% COPING NBR" = Prop_NBR,
+    "Total" = Total,
+    "% Total" = Prop_total) 
+
+#Change column order
+col_order <- c("Descriptive", "GLAD", "% GLAD",
+               "COPING NBR", "% COPING NBR",
+               "Total", "% Total")
+anxdep_groupings_descriptives <- anxdep_groupings_descriptives.raw[, col_order]
+
+#add in column to show which descriptives they are
+anxdep_groupings_descriptives <- anxdep_groupings_descriptives %>%
+  rename(
+    Grouping = 
+      Descriptive) %>% 
+  mutate(
+    GLAD = round(GLAD, 0),
+    `COPING NBR` = round(`COPING NBR`, 0),
+    Total = round(Total, 0),
+    `% GLAD`= round(`% GLAD`, 2),
+    `% COPING NBR`= round(`% COPING NBR`, 2),
+    `% Total`= round(`% Total`, 2)) %>%
+select(
+    Grouping,
+    GLAD,
+    `% GLAD`,
+    `COPING NBR`,
+    `% COPING NBR`,
+    `Full sample` = Total,
+    `% Full sample` = `% Total`) %>% 
+  mutate(Grouping = 
+           fct_relevel(
+             .f = Grouping,
+             "Single anxiety",
+             "Anxiety-anxiety",
+             "Anxiety-MDD",
+             "MDD only"
+           )) %>% 
+  arrange(Grouping) 
+  
+#final table to be viewed in word
+kable(anxdep_groupings_descriptives) 
+```
+
+
+# Check N with missing diagnostic data
+
+```{r NAs in algorithm-based diagnoses}
+
+#Do NOT use 'is.na' for these as then you cannot +1 to it. Use the no.info item for NA (below). 
+dat$algorithm_based_NA.n<-0
+
+#MDD
+dat$algorithm_based_NA.n<-with(dat, 
+                         ifelse(is.na(cidid.diagnosis_numeric),
+                                algorithm_based_NA.n + 1, algorithm_based_NA.n))
+#GAD
+dat$algorithm_based_NA.n<-with(dat, 
+                         ifelse(is.na(cidia.diagnosis_numeric),
+                                algorithm_based_NA.n + 1, algorithm_based_NA.n))
+#Specific phobia
+dat$algorithm_based_NA.n<-with(dat, 
+                         ifelse(is.na(spec.diagnosis_numeric),
+                                algorithm_based_NA.n + 1, algorithm_based_NA.n))
+#Social phobia
+dat$algorithm_based_NA.n<-with(dat, 
+                         ifelse(is.na(socp.diagnosis_numeric),
+                                algorithm_based_NA.n + 1, algorithm_based_NA.n))
+#Panic disorder
+dat$algorithm_based_NA.n<-with(dat, 
+                         ifelse(is.na(pad.diagnosis_numeric),
+                                algorithm_based_NA.n + 1, algorithm_based_NA.n))
+#Agoraphobia
+dat$algorithm_based_NA.n<-with(dat, 
+                         ifelse(is.na(agp.diagnosis_numeric),
+                                algorithm_based_NA.n + 1, algorithm_based_NA.n))
+#Check distribution of scores
+summary(as.factor(dat$algorithm_based_NA.n))
+
+
+```
+
+# Check N with genetic data
+
+```{r create binary variable for genetic data}
+dat <- dat %>% 
+  mutate(
+    genetic_data_presence_numeric =
+      case_when(
+        !is.na(anxietyPRS_z) ~ 1,
+        is.na(anxietyPRS_z) ~ 0
+      ),
+    genetic_data_presence = 
+      recode_factor(
+        genetic_data_presence_numeric,
+        "0" = "No genetic data",
+        "1" = "Genetic data"
+      )
+  )
+```
+
+```{r N genetic data by sample}
+genetic_data_descriptives.raw <- dat %>% #create object to bind later on
+  #drop_na(single_anxiety_numeric) %>% 
+  count(sample, genetic_data_presence) %>%
+  mutate(Prop_all = round(n/sum(n)*100, 2)) %>%
+  group_by(sample) %>% 
+  mutate(Prop = round(n/sum(n)*100, 2)) %>% 
+  pivot_wider(names_from = sample, values_from = c(n, Prop_all, Prop)) %>%
+  #mutate_if(is.numeric, ~replace(., is.na(.), 0)) %>% 
+  mutate(Total = n_GLAD + n_NBR,
+         Prop_total = Prop_all_GLAD + Prop_all_NBR) %>% 
+  select(-Prop_all_GLAD, -Prop_all_NBR,
+    "Descriptive" = genetic_data_presence,
+    "GLAD" = n_GLAD,
+    "% GLAD" = Prop_GLAD,
+    "COPING NBR" = n_NBR,
+    "% COPING NBR" = Prop_NBR,
+    "Total" = Total,
+    "% Total" = Prop_total) 
+
+#Change column order
+col_order <- c("Descriptive", "GLAD", "% GLAD",
+               "COPING NBR", "% COPING NBR",
+               "Total", "% Total")
+genetic_data_descriptives <- genetic_data_descriptives.raw[, col_order]
+
+#add in column to show which descriptives they are
+genetic_data_descriptives <- genetic_data_descriptives %>%
+  rename(
+    Grouping = 
+      Descriptive) %>% 
+  mutate(
+    GLAD = round(GLAD, 0),
+    `COPING NBR` = round(`COPING NBR`, 0),
+    Total = round(Total, 0),
+    `% GLAD`= round(`% GLAD`, 2),
+    `% COPING NBR`= round(`% COPING NBR`, 2),
+    `% Total`= round(`% Total`, 2)) %>%
+select(
+    Grouping,
+    GLAD,
+    `% GLAD`,
+    `COPING NBR`,
+    `% COPING NBR`,
+    `Full sample` = Total,
+    `% Full sample` = `% Total`) 
+#final table to be viewed in word
+kable(genetic_data_descriptives) 
+```
+
+Note that the 'Total' column doesn't mean very much here. Only using the one by sample.
+```{r N genetic data (in columns) by anxiety/depression groupings}
+genetic_data_descriptives_by_comorbidity.raw <- dat %>% #create object to bind later on
+  #drop_na(single_anxiety_numeric) %>% 
+  count(genetic_data_presence, all_anxiety_depression) %>%
+  mutate(Prop_all = round(n/sum(n)*100, 2)) %>%
+  group_by(all_anxiety_depression) %>% 
+  mutate(Prop = round(n/sum(n)*100, 2)) %>% 
+  pivot_wider(names_from = genetic_data_presence, values_from = c(n, Prop_all, Prop)) %>%
+  #mutate_if(is.numeric, ~replace(., is.na(.), 0)) %>% 
+  mutate(Total = sum(`n_Genetic data`),
+         Prop_total = sum(`Prop_all_Genetic data`)) %>% 
+  select(-starts_with("Prop_all"),
+    "Descriptive" = all_anxiety_depression,
+    "No genetic data" = `n_No genetic data`,
+    "% No genetic data" = `Prop_No genetic data`,
+    "Genetic data" = `n_Genetic data`,
+    "% Genetic data" = `Prop_Genetic data`,
+    "Total" = Total,
+    "% Total" = Prop_total) 
+
+#Change column order
+col_order <- c("Descriptive", "Genetic data", "% Genetic data",
+               "No genetic data", "% No genetic data",
+               "Total", "% Total")
+genetic_data_descriptives_by_comorbidity <- genetic_data_descriptives_by_comorbidity.raw[, col_order]
+
+#add in column to show which descriptives they are
+genetic_data_descriptives_by_comorbidity <- genetic_data_descriptives_by_comorbidity %>%
+  rename(
+    Grouping = 
+      Descriptive) %>% 
+  mutate(
+    `Genetic data` = round(`Genetic data`, 0),
+    `No genetic data` = round(`No genetic data`, 0),
+    Total = round(Total, 0),
+    `% Genetic data`= round(`% Genetic data`, 2),
+    `% No genetic data`= round(`% No genetic data`, 2),
+    `% Total`= round(`% Total`, 2)) 
+
+#final table to be viewed in word
+kable(genetic_data_descriptives_by_comorbidity) 
+```
+
+```{r N genetic data (in rows) by anxiety/depression groupings}
+genetic_data_rows_descriptives_by_comorbidity.raw <- dat %>% #create object to bind later on
+  #drop_na(single_anxiety_numeric) %>% 
+  count(all_anxiety_depression, genetic_data_presence) %>%
+  mutate(Prop_all = round(n/sum(n)*100, 2)) %>%
+  group_by(all_anxiety_depression) %>% 
+  mutate(Prop = round(n/sum(n)*100, 2)) %>% 
+  pivot_wider(names_from = all_anxiety_depression, values_from = c(n, Prop_all, Prop)) %>%
+  #mutate_if(is.numeric, ~replace(., is.na(.), 0)) %>% 
+  mutate(Total = `n_Anxiety-MDD` + `n_MDD only` + `n_Anxiety-anxiety` + `n_Single anxiety`,
+         Prop_total = `Prop_all_Anxiety-MDD` + `Prop_all_MDD only` + `Prop_all_Anxiety-anxiety` + `Prop_all_Single anxiety`) %>% 
+  select(-starts_with("Prop_all"),
+    "Descriptive" = genetic_data_presence,
+    "Anxiety-MDD" = `n_Anxiety-MDD`,
+    "% Anxiety-MDD" = `Prop_Anxiety-MDD`,
+    "MDD only" = `n_MDD only`,
+    "% MDD only" = `Prop_MDD only`,
+    "Anxiety-anxiety" = `n_Anxiety-anxiety`,
+    "% Anxiety-anxiety" = `Prop_Anxiety-anxiety`,
+    "Single anxiety" = `n_Single anxiety`,
+    "% Single anxiety" = `Prop_Single anxiety`,
+    #"Missing" = n_NA,
+    #"% Missing" = Prop_NA, # Removed also from Total calculations (NAs removed from this dataset)
+    "Total" = Total,
+    "% Total" = Prop_total)
+
+#Change column order
+col_order <- c("Descriptive", "Single anxiety", "% Single anxiety",
+               "MDD only", "% MDD only",
+               "Anxiety-MDD", "% Anxiety-MDD",
+               "Anxiety-anxiety", "% Anxiety-anxiety",
+               #"Missing", "% Missing",
+               "Total", "% Total")
+genetic_data_rows_descriptives_by_comorbidity <- genetic_data_rows_descriptives_by_comorbidity.raw[, col_order]
+
+#add in column to show which descriptives they are
+genetic_data_rows_descriptives_by_comorbidity <- genetic_data_rows_descriptives_by_comorbidity %>%
+  rename(
+    Grouping = 
+      Descriptive) %>% 
+  mutate(
+    `Single anxiety` = round(`Single anxiety`, 0),
+    `MDD only` = round(`MDD only`, 0),
+    `Anxiety-MDD` = round(`Anxiety-MDD`, 0),
+    `Anxiety-anxiety` = round(`Anxiety-anxiety`, 0),
+    Total = round(Total, 0),
+    `% Single anxiety`= round(`% Single anxiety`, 2),
+    `% MDD only`= round(`% MDD only`, 2),
+    `% Anxiety-MDD`= round(`% Anxiety-MDD`, 2),
+    `% Anxiety-anxiety`= round(`% Anxiety-anxiety`, 2),
+    `% Total`= round(`% Total`, 2)) 
+
+#final table to be viewed in word
+kable(genetic_data_rows_descriptives_by_comorbidity) 
+```
+
+
+# Descriptives: Anxiety/depressive categories
+
+## Main analysis variables
+
+### Table
+
+Create tables for all descriptives (including those for analyses 2a/2b - these will be filtered out in tables applicable only to the main analysis).    
+
+*Continuous (or count) variables include:*  
+- Age (dem.age)  
+- PHQ9 sum score (phq9.sum_score)  
+- GAD7 sum score (gad7.sum_score)     
+- Age of onset (min_age_of_onset)  
+- Recurence (max_recurrence)  
+- Anxiety PRS  
+- Depression PRS  
+- NeuroticismPRS  
+- ADHD PRS  
+- Autism PRS  
+- Schizophrenia PR  
+- Educational attainment PRS  
+
+```{r Continuous variables table, include=FALSE}
+#Create table
+numeric_table <- dat %>% 
+  group_by(all_anxiety_depression) %>%
+  summarise_at(
+    vars(
+      dem.age,
+      phq9.sum_score,
+      gad7.sum_score,
+      min_age_of_onset,
+      max_recurrence,
+      anxietyPRS_z,
+      depression05_PRS_z,
+      neuroticismPRS_z,
+      adhdPRS_z,
+      autismPRS_z,
+      schizophreniaPRS_z,
+      educationPRS_z
+      ),
+    .funs =
+      list(
+        ~mean(., na.rm = T),
+        ~sd(., na.rm = T),
+        mode = ~mode_func(., na.rm = T),
+        ~median(., na.rm = T),
+        quartile1 = ~quantile(., probs = 0.25, na.rm = T),
+        quartile3 = ~quantile(., probs = 0.75, na.rm = T),
+        ~min(., na.rm = T),
+        ~max(., na.rm = T),
+        missing = ~n_missing(.),
+        ~skew(., na.rm = T),
+        kurtosis = ~kurtosi(., na.rm = T)
+      )
+  ) %>% 
+  mutate(all_anxiety_depression = 
+           fct_relevel(
+             .f = all_anxiety_depression,
+             "Single anxiety",
+             "Anxiety-anxiety",
+             "Anxiety-MDD",
+             "MDD only"
+           )) %>% 
+  arrange(all_anxiety_depression)
+
+numeric_table
+```
+
+```{r Continuous variables reshape table, include=FALSE}
+#Reshape continuous data table - make wide data long 
+numeric_table_reshaped <- numeric_table %>% 
+  gather(key, value, -all_anxiety_depression) %>% 
+  separate(
+    key,
+    c("variable", "measure"),
+    sep = "_(?=[^_]+$)" # separate by last _
+    ) %>% #separates the column 'key' into 'variable' and 'column' measure, indicated as they are separated by _
+  mutate(measure = factor(
+    x = measure,
+    levels =  c( # this is the order I want my columns to appear in
+     "missing",
+     "min",
+     "max",
+     "mean", 
+     "median",
+     "quartile1",
+     "quartile3",
+     "mode",
+     "sd",
+     "skew",
+     "kurtosis"
+    ))) %>% 
+  spread(measure, value) #spread to get mean, mode and median column etc
+
+
+numeric_table_reshaped
+```
+
+```{r Continuous reduce table to means and sd, include=FALSE}
+numeric_table_reshaped_reduced_nonparametric <- numeric_table_reshaped %>%
+  mutate(
+    "Variable" = fct_recode(
+      .f = variable,
+      "Age (years, sd)" = "dem.age",
+      "Current depression (total score, sd)" = "phq9.sum_score",
+      "Current anxiety (total score, sd)" = "gad7.sum_score",
+      "Age of onset (years, sd)" = "min_age_of_onset",
+      "Recurrence (number of episodes, sd)" = "max_recurrence",
+      "Anxiety PRS (total score, sd)" = "anxietyPRS_z",
+      "MDD PRS (total score, sd)" = "depression05_PRS_z",
+      "Neuroticism PRS (total score, sd)" = "neuroticismPRS_z",
+      "ADHD PRS (total score, sd)" = "adhdPRS_z",
+      "Autism PRS (total score, sd)" = "autismPRS_z",
+      "Schizophrenia PRS (total score, sd)" = "schizophreniaPRS_z",
+      "Educational attainment PRS (total score, sd)" = "educationPRS_z"
+),
+    "Variable" = fct_relevel(
+      .f = Variable,
+      Variable_continuous_ordered
+      ),
+    "Mean" = case_when(
+      mean >= 1 ~ round(mean, digits = 1),
+      mean < 1 ~ round(mean, digits = 2)
+    ),
+    "SD" = case_when(
+      sd >= 1 ~ round(sd, digits = 1),
+      sd < 1 ~ round(sd, digits = 2)
+    ),
+  ) %>%
+  select(
+    "Comorbidity grouping" = all_anxiety_depression,
+    Variable,
+    "Mean",
+    "SD",
+  ) %>%
+  arrange(Variable) %>%
+  arrange(`Comorbidity grouping`) %>%
+  mutate(Value = paste0(format(`Mean`, nsmall = 1), " (",format(`SD`,2, nsmall = 1),")")) %>%
+  select(
+    "Comorbidity grouping",
+    "Variable",
+    "Value") %>%
+  pivot_wider(
+   names_from = "Comorbidity grouping",
+    values_from = Value
+   )
+  
+
+kable(numeric_table_reshaped_reduced_nonparametric)
+```
+
+Create tables for categorical variable frequencies    
+
+*Catgorical variables include:*  
+- Sex  
+- Ethnicity  
+- Highest education 
+- Childhood trauma  
+- Adult trauma  
+- Catastrophic trauma  
+- Family history of anx/dep  
+- Family history of other MH disorder  
+- Self-reported anx/dep disorder  
+- Self-reported other MH disorders  
+
+```{r sex per all_anxiety_depression prop for table, include=FALSE}
+#sex grouped by all_anxiety_depression proportions per all_anxiety_depression group/level
+sex_per_all_anxiety_depression_prop_table <- dat %>%
+  group_by(all_anxiety_depression) %>%
+  count(dem.sex, all_anxiety_depression) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(all_anxiety_depression, dem.sex, Value) %>% 
+  pivot_wider(names_from = all_anxiety_depression,
+              values_from = Value) %>% 
+  filter(dem.sex == "Female") %>% 
+  mutate(Variable = "Sex (% female, n)") %>% 
+  select(-dem.sex)
+
+sex_per_all_anxiety_depression_prop_table
+```
+
+```{r ethnicity per all_anxiety_depression prop for table, include=FALSE}
+#ethnicity grouped by all_anxiety_depression proportions per all_anxiety_depression group/level
+ethnicity_per_all_anxiety_depression_prop_table <- dat %>%
+  group_by(all_anxiety_depression) %>%
+  count(dem.ethnicity_collapsed, all_anxiety_depression) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(all_anxiety_depression, dem.ethnicity_collapsed, Value) %>% 
+  pivot_wider(names_from = all_anxiety_depression,
+              values_from = Value) %>% 
+  filter(dem.ethnicity_collapsed == "White") %>% 
+  mutate(Variable = "Ethnicity (% white, n)") %>% 
+  select(-dem.ethnicity_collapsed)
+
+
+ethnicity_per_all_anxiety_depression_prop_table
+```
+
+```{r highest education per all_anxiety_depression prop for table, include=FALSE}
+#highest education grouped by all_anxiety_depression proportions per all_anxiety_depression group/level
+highest_education_per_all_anxiety_depression_prop_table <- dat %>%
+  group_by(all_anxiety_depression) %>%
+  count(dem.highest_education_ordered_collapsed, all_anxiety_depression) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+      Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(all_anxiety_depression, dem.highest_education_ordered_collapsed, Value) %>% 
+  pivot_wider(names_from = all_anxiety_depression,
+              values_from = Value) %>% 
+  filter(dem.highest_education_ordered_collapsed == "College or university degree" |
+           dem.highest_education_ordered_collapsed == "A levels/AS levels or equivalent"|
+           dem.highest_education_ordered_collapsed == "O levels/GCSEs or equivalent" |
+           dem.highest_education_ordered_collapsed == "No qualifications") %>% 
+  mutate(Variable = case_when(
+    dem.highest_education_ordered_collapsed == "College or university degree" ~ "Highest education: University degree (%, n)",
+    dem.highest_education_ordered_collapsed == "A levels/AS levels or equivalent" ~ "Highest education: A-levels (%, n)",
+    dem.highest_education_ordered_collapsed == "O levels/GCSEs or equivalent" ~ "Highest education: GCSEs (%, n)",
+    dem.highest_education_ordered_collapsed == "No qualifications"  ~ "Highest education: No qualifications (%, n)"
+    )
+  ) %>% 
+  select(-dem.highest_education_ordered_collapsed)
+
+highest_education_per_all_anxiety_depression_prop_table
+```
+
+```{r any childhood trauma per all_anxiety_depression prop for table, include=FALSE}
+#childhood trauma (child maltreatment) grouped by all_anxiety_depression proportions per all_anxiety_depression group/level
+childhood_trauma_per_all_anxiety_depression_prop_table <- dat %>%
+  group_by(all_anxiety_depression) %>%
+  count(cts.any_maltreatment_binary, all_anxiety_depression) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(all_anxiety_depression, 
+         cts.any_maltreatment_binary, 
+         Value) %>% 
+  pivot_wider(names_from = all_anxiety_depression,
+              values_from = Value) %>% 
+  filter(cts.any_maltreatment_binary == "Childhood maltreatment") %>% 
+  mutate(Variable = case_when(
+    cts.any_maltreatment_binary == "Childhood maltreatment" ~ "Childhood trauma (% present, n)"
+    )
+  ) %>% 
+  select(-cts.any_maltreatment_binary)
+
+childhood_trauma_per_all_anxiety_depression_prop_table
+```
+
+```{r any adult trauma per all_anxiety_depression prop for table, include=FALSE}
+#adult trauma (partner abuse) grouped by all_anxiety_depression proportions per all_anxiety_depression group/level
+adult_trauma_per_all_anxiety_depression_prop_table <- dat %>%
+  group_by(all_anxiety_depression) %>%
+  count(ats.partner_abuse_binary, all_anxiety_depression) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(all_anxiety_depression, 
+         ats.partner_abuse_binary, 
+         Value) %>% 
+  pivot_wider(names_from = all_anxiety_depression,
+              values_from = Value) %>% 
+  filter(ats.partner_abuse_binary == "Partner abuse") %>% 
+  mutate(Variable = case_when(
+    ats.partner_abuse_binary == "Partner abuse" ~ "Adult trauma (% present, n)"
+    )
+  ) %>% 
+  select(-ats.partner_abuse_binary)
+
+adult_trauma_per_all_anxiety_depression_prop_table
+```
+
+```{r any catastrophic trauma per all_anxiety_depression prop for table, include=FALSE}
+#catastrophic trauma (partner abuse) grouped by all_anxiety_depression proportions per all_anxiety_depression group/level
+catastrophic_trauma_per_all_anxiety_depression_prop_table <- dat %>%
+  group_by(all_anxiety_depression) %>%
+  count(ats.catastrophic_trauma_binary, all_anxiety_depression) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(all_anxiety_depression, 
+         ats.catastrophic_trauma_binary, 
+         Value) %>% 
+  pivot_wider(names_from = all_anxiety_depression,
+              values_from = Value) %>% 
+  filter(ats.catastrophic_trauma_binary == "Catastrophic trauma") %>% 
+  mutate(Variable = "Catastrophic trauma (% present, n)") %>% 
+  select(-ats.catastrophic_trauma_binary)
+
+catastrophic_trauma_per_all_anxiety_depression_prop_table
+```
+
+```{r family history anx/dep per all_anxiety_depression prop for table, include=FALSE}
+#family history anx/dep grouped by all_anxiety_depression proportions per all_anxiety_depression group/level
+mhfh_anx_dep_per_all_anxiety_depression_prop_table <- dat %>%
+  group_by(all_anxiety_depression) %>%
+  count(mhfh.anxiety_or_depression, all_anxiety_depression) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(all_anxiety_depression, mhfh.anxiety_or_depression, Value) %>% 
+  pivot_wider(names_from = all_anxiety_depression,
+              values_from = Value) %>% 
+  filter(mhfh.anxiety_or_depression == "Positive family history") %>% 
+  mutate(Variable = "Family history: Anxiety/depressive disorder (% positive, n)") %>% 
+  select(-mhfh.anxiety_or_depression)
+
+mhfh_anx_dep_per_all_anxiety_depression_prop_table
+```
+
+```{r family history other per all_anxiety_depression prop for table, include=FALSE}
+#family history other grouped by all_anxiety_depression proportions per all_anxiety_depression group/level
+mhfh_other_per_all_anxiety_depression_prop_table <- dat %>%
+  group_by(all_anxiety_depression) %>%
+  count(mhfh.other_disorders, all_anxiety_depression) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(all_anxiety_depression, mhfh.other_disorders, Value) %>% 
+  pivot_wider(names_from = all_anxiety_depression,
+              values_from = Value) %>% 
+  filter(mhfh.other_disorders == "Positive family history") %>% 
+  mutate(Variable = "Family history: Other mental health disorder (% positive, n)") %>% 
+  select(-mhfh.other_disorders)
+
+mhfh_other_per_all_anxiety_depression_prop_table
+```
+
+```{r self-reported anx/dep per all_anxiety_depression prop for table, include=FALSE}
+#self-reported anx/dep grouped by all_anxiety_depression proportions per all_anxiety_depression group/level
+mhd_anx_dep_per_all_anxiety_depression_prop_table <- dat %>%
+  group_by(all_anxiety_depression) %>%
+  count(mhd.anxiety_depression, all_anxiety_depression) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(all_anxiety_depression, mhd.anxiety_depression, Value) %>% 
+  pivot_wider(names_from = all_anxiety_depression,
+              values_from = Value) %>% 
+  filter(mhd.anxiety_depression == "Diagnosis") %>% 
+  mutate(Variable = "Self-reported anxiety/depressive disorder (% diagnosis, n)") %>% 
+  select(-mhd.anxiety_depression)
+
+mhd_anx_dep_per_all_anxiety_depression_prop_table
+```
+
+```{r self-reported other diag per all_anxiety_depression prop for table, include=FALSE}
+#self-reported other diag grouped by all_anxiety_depression proportions per all_anxiety_depression group/level
+mhd_other_per_all_anxiety_depression_prop_table <- dat %>%
+  group_by(all_anxiety_depression) %>%
+  count(mhd.other_diagnoses, all_anxiety_depression) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(all_anxiety_depression, mhd.other_diagnoses, Value) %>% 
+  pivot_wider(names_from = all_anxiety_depression,
+              values_from = Value) %>% 
+  filter(mhd.other_diagnoses == "Diagnosis") %>% 
+  mutate(Variable = "Self-reported other mental health disorder (% diagnosis, n)") %>% 
+  select(-mhd.other_diagnoses)
+
+mhd_other_per_all_anxiety_depression_prop_table
+```
+
+```{r combined categorical table, include=FALSE}
+categorical_table <- sex_per_all_anxiety_depression_prop_table %>% 
+  rbind(ethnicity_per_all_anxiety_depression_prop_table,
+        highest_education_per_all_anxiety_depression_prop_table,
+        mhfh_anx_dep_per_all_anxiety_depression_prop_table,
+        mhfh_other_per_all_anxiety_depression_prop_table,
+        childhood_trauma_per_all_anxiety_depression_prop_table,
+        adult_trauma_per_all_anxiety_depression_prop_table,
+        catastrophic_trauma_per_all_anxiety_depression_prop_table,
+        mhd_anx_dep_per_all_anxiety_depression_prop_table,
+        mhd_other_per_all_anxiety_depression_prop_table) %>% 
+  select(Variable, `Single anxiety`, `Anxiety-anxiety`, `Anxiety-MDD`, `MDD only`)
+
+categorical_table
+```
+
+```{r combined all analyses continuous/categorical variable tables, echo=FALSE}
+#Merge descriptive tables
+descriptives <- rbind(numeric_table_reshaped_reduced_nonparametric,
+                      categorical_table) %>% 
+  select(Variable, `Single anxiety`, `Anxiety-MDD`, `Anxiety-anxiety`, `MDD only`) %>% 
+  mutate("Variable" = fct_relevel(
+      .f = Variable,
+      Variable_ordered
+      )
+  ) %>% 
+  arrange(Variable)
+
+kable(descriptives)
+```
+
+```{r descriptives table for main analysis, echo=FALSE}
+descriptives.table.all_main_analysis <- descriptives %>%
+  filter(!str_detect(Variable, 'PRS'),
+         !str_detect(Variable, 'Family history')
+         ) 
+
+#descriptives.table.all_main_analysis
+kable(descriptives.table.all_main_analysis)
+```
+
+### Figure
+
+#### Continuous variables
+
+```{r Continuous variables table for figure, include=FALSE}
+#With unadjusted age and age of onset variables
+#Create table
+numeric_table_figure <- dat %>% 
+  group_by(all_anxiety_depression) %>%
+  summarise_at(
+    vars(
+      dem.age,
+      phq9.sum_score,
+      gad7.sum_score,
+      min_age_of_onset,
+      max_recurrence,
+      anxietyPRS_z,
+      depression05_PRS_z,
+      neuroticismPRS_z,
+      adhdPRS_z,
+      autismPRS_z,
+      schizophreniaPRS_z,
+      educationPRS_z
+      ),
+    .funs =
+      list(
+        ~mean(., na.rm = T),
+        ~sd(., na.rm = T),
+        mode = ~mode_func(., na.rm = T),
+        ~median(., na.rm = T),
+        quartile1 = ~quantile(., probs = 0.25, na.rm = T),
+        quartile3 = ~quantile(., probs = 0.75, na.rm = T),
+        ~min(., na.rm = T),
+        ~max(., na.rm = T),
+        missing = ~n_missing(.),
+        ~skew(., na.rm = T),
+        kurtosis = ~kurtosi(., na.rm = T)
+      )
+  ) %>% 
+  mutate(all_anxiety_depression = 
+           fct_relevel(
+             .f = all_anxiety_depression,
+             "Single anxiety",
+             "Anxiety-anxiety",
+             "Anxiety-MDD",
+             "MDD only"
+           )) %>% 
+  arrange(all_anxiety_depression)
+
+numeric_table_figure
+```
+
+```{r Continuous variables reshape table for figure, include=FALSE}
+#Reshape continuous data table - make wide data long 
+numeric_table_figure_reshaped <- numeric_table_figure %>% 
+  gather(key, value, -all_anxiety_depression) %>% 
+  separate(
+    key,
+    c("variable", "measure"),
+    sep = "_(?=[^_]+$)" # separate by last _
+    ) %>% #separates the column 'key' into 'variable' and 'column' measure, indicated as they are separated by _
+  mutate(measure = factor(
+    x = measure,
+    levels =  c( # this is the order I want my columns to appear in
+     "missing",
+     "min",
+     "max",
+     "mean", 
+     "median",
+     "quartile1",
+     "quartile3",
+     "mode",
+     "sd",
+     "skew",
+     "kurtosis"
+    ))) %>% 
+  spread(measure, value) #spread to get mean, mode and median column etc
+
+
+numeric_table_figure_reshaped
+```
+
+```{r Continuous reduce table to means for figure, include=FALSE}
+numeric_table_figure_reshaped_reduced <- numeric_table_figure_reshaped %>%
+  mutate(
+    "Variable" = fct_recode(
+      .f = variable,
+      "Age" = "dem.age",
+      "Current depressive symtoms" = "phq9.sum_score",
+      "Current anxiety symtoms" = "gad7.sum_score",
+      "Age of onset" = "min_age_of_onset",
+      "Recurrence" = "max_recurrence",
+      "Anxiety PRS" = "anxietyPRS_z",
+      "MDD PRS" = "depression05_PRS_z",
+      "Neuroticism PRS" = "neuroticismPRS_z",
+      "ADHD PRS" = "adhdPRS_z",
+      "Autism PRS" = "autismPRS_z",
+      "Schizophrenia PRS" = "schizophreniaPRS_z",
+      "Educational attainment PRS" = "educationPRS_z"
+      ),
+    "Mean" = round(mean, digits = 2)
+  ) %>%
+  select(
+    "Comorbidity grouping" = all_anxiety_depression,
+    Variable,
+    "Mean"
+  ) %>%
+  arrange(Variable) %>%
+  arrange(`Comorbidity grouping`) %>%
+  select(
+    "Comorbidity grouping",
+    "Variable",
+    "Value" = "Mean") %>%
+  pivot_wider(
+   names_from = "Comorbidity grouping",
+    values_from = Value
+   ) 
+  
+numeric_table_figure_reshaped_reduced
+```
+
+```{r sex per all_anxiety_depression prop for figure, include=FALSE}
+#sex grouped by all_anxiety_depression proportions per all_anxiety_depression group/level
+sex_per_all_anxiety_depression_prop_figure <- dat %>%
+  group_by(all_anxiety_depression) %>%
+  count(dem.sex, all_anxiety_depression) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = Prop*100
+  ) %>%
+  select(all_anxiety_depression, 
+         dem.sex, 
+         Value) %>% 
+  pivot_wider(names_from = all_anxiety_depression,
+              values_from = Value) %>% 
+  filter(dem.sex == "Female") %>% 
+  mutate(Variable = "Sex: Female") %>% 
+  select(-dem.sex)
+
+sex_per_all_anxiety_depression_prop_figure
+```
+
+```{r ethnicity per all_anxiety_depression prop for figure, include=FALSE}
+#ethnicity grouped by all_anxiety_depression proportions per all_anxiety_depression group/level
+ethnicity_per_all_anxiety_depression_prop_figure <- dat %>%
+  group_by(all_anxiety_depression) %>%
+  count(dem.ethnicity_collapsed, all_anxiety_depression) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = Prop*100
+  ) %>%
+  select(all_anxiety_depression, 
+         dem.ethnicity_collapsed, 
+         Value) %>% 
+  pivot_wider(names_from = all_anxiety_depression,
+              values_from = Value) %>% 
+  filter(dem.ethnicity_collapsed == "White") %>% 
+  mutate(Variable = "Ethnicity") %>% 
+  select(-dem.ethnicity_collapsed)
+
+ethnicity_per_all_anxiety_depression_prop_figure
+```
+
+```{r highest education per all_anxiety_depression prop for figure, include=FALSE}
+#highest education grouped by all_anxiety_depression proportions per all_anxiety_depression group/level
+highest_education_per_all_anxiety_depression_prop_figure <- dat %>%
+  group_by(all_anxiety_depression) %>%
+  count(dem.highest_education_ordered_collapsed, all_anxiety_depression) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = Prop*100
+  ) %>% 
+  select(all_anxiety_depression, 
+         dem.highest_education_ordered_collapsed, 
+         Value) %>% 
+  pivot_wider(names_from = all_anxiety_depression,
+              values_from = Value) %>% 
+  filter(dem.highest_education_ordered_collapsed == "College or university degree" |
+           dem.highest_education_ordered_collapsed == "A levels/AS levels or equivalent" |
+           dem.highest_education_ordered_collapsed == "O levels/GCSEs or equivalent" |
+           dem.highest_education_ordered_collapsed == "No qualifications") %>% 
+  mutate(Variable = case_when(
+    dem.highest_education_ordered_collapsed == "College or university degree" ~ "Highest education: University degree",
+    dem.highest_education_ordered_collapsed == "A levels/AS levels or equivalent" ~ "Highest education: A-levels",
+    dem.highest_education_ordered_collapsed == "O levels/GCSEs or equivalent" ~ "Highest education: GCSEs",
+    dem.highest_education_ordered_collapsed == "No qualifications"  ~ "Highest education: No qualifications"
+    )
+  ) %>% 
+  select(-dem.highest_education_ordered_collapsed)
+
+highest_education_per_all_anxiety_depression_prop_figure
+```
+
+```{r any childhood trauma per all_anxiety_depression prop for figure, include=FALSE}
+#child trauma (child maltreatment) grouped by all_anxiety_depression proportions per all_anxiety_depression group/level
+child_trauma_per_all_anxiety_depression_prop_figure <- dat %>%
+  group_by(all_anxiety_depression) %>%
+  count(cts.any_maltreatment_binary, all_anxiety_depression) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = Prop*100
+  ) %>% 
+  select(all_anxiety_depression, 
+         cts.any_maltreatment_binary, 
+         Value) %>% 
+  pivot_wider(names_from = all_anxiety_depression,
+              values_from = Value) %>% 
+  filter(cts.any_maltreatment_binary == "Childhood maltreatment") %>% 
+  mutate(Variable = case_when(
+    cts.any_maltreatment_binary == "Childhood maltreatment" ~ "Childhood trauma"
+    )
+  ) %>% 
+  select(-cts.any_maltreatment_binary)
+
+child_trauma_per_all_anxiety_depression_prop_figure
+```
+
+```{r any adult trauma per all_anxiety_depression prop for figure, include=FALSE}
+#adult trauma (partner abuse) grouped by all_anxiety_depression proportions per all_anxiety_depression group/level
+adult_trauma_per_all_anxiety_depression_prop_figure <- dat %>%
+  group_by(all_anxiety_depression) %>%
+  count(ats.partner_abuse_binary, all_anxiety_depression) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = Prop*100
+  ) %>% 
+  select(all_anxiety_depression, 
+         ats.partner_abuse_binary, 
+         Value) %>% 
+  pivot_wider(names_from = all_anxiety_depression,
+              values_from = Value) %>% 
+  filter(ats.partner_abuse_binary == "Partner abuse") %>% 
+  mutate(Variable = case_when(
+    ats.partner_abuse_binary == "Partner abuse" ~ "Adult trauma"
+    )
+  ) %>% 
+  select(-ats.partner_abuse_binary)
+
+adult_trauma_per_all_anxiety_depression_prop_figure
+```
+
+```{r any catastrophic trauma per all_anxiety_depression prop for figure, include=FALSE}
+#catastrophic trauma (partner abuse) grouped by all_anxiety_depression proportions per all_anxiety_depression group/level
+catastrophic_trauma_per_all_anxiety_depression_prop_figure <- dat %>%
+  group_by(all_anxiety_depression) %>%
+  count(ats.catastrophic_trauma_binary, all_anxiety_depression) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = Prop*100
+  ) %>% 
+  select(all_anxiety_depression, 
+         ats.catastrophic_trauma_binary, 
+         Value) %>% 
+  pivot_wider(names_from = all_anxiety_depression,
+              values_from = Value) %>% 
+  filter(ats.catastrophic_trauma_binary == "Catastrophic trauma") %>% 
+  mutate(Variable = "Catastrophic trauma") %>% 
+  select(-ats.catastrophic_trauma_binary)
+
+catastrophic_trauma_per_all_anxiety_depression_prop_figure
+```
+
+```{r family history anx/dep per all_anxiety_depression prop for figure, include=FALSE}
+#family history anx/dep grouped by all_anxiety_depression proportions per all_anxiety_depression group/level
+mhfh_anx_dep_per_all_anxiety_depression_prop_figure <- dat %>%
+  group_by(all_anxiety_depression) %>%
+  count(mhfh.anxiety_or_depression, all_anxiety_depression) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = Prop*100
+  ) %>%
+  select(all_anxiety_depression, 
+         mhfh.anxiety_or_depression, 
+         Value) %>% 
+  pivot_wider(names_from = all_anxiety_depression,
+              values_from = Value) %>% 
+  filter(mhfh.anxiety_or_depression == "Positive family history") %>% 
+  mutate(Variable = "Family history: Anxiety/depressive disorder") %>% 
+  select(-mhfh.anxiety_or_depression)
+
+mhfh_anx_dep_per_all_anxiety_depression_prop_figure
+```
+
+```{r family history other per all_anxiety_depression prop for figure, include=FALSE}
+#family history other grouped by all_anxiety_depression proportions per all_anxiety_depression group/level
+mhfh_other_per_all_anxiety_depression_prop_figure <- dat %>%
+  group_by(all_anxiety_depression) %>%
+  count(mhfh.other_disorders, all_anxiety_depression) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = Prop*100
+  ) %>% 
+  select(all_anxiety_depression, 
+         mhfh.other_disorders, 
+         Value) %>% 
+  pivot_wider(names_from = all_anxiety_depression,
+              values_from = Value) %>% 
+  filter(mhfh.other_disorders == "Positive family history") %>% 
+  mutate(Variable = "Family history: Other mental health disorder") %>% 
+  select(-mhfh.other_disorders)
+
+mhfh_other_per_all_anxiety_depression_prop_figure
+```
+
+```{r self-reported anx/dep per all_anxiety_depression prop for figure, include=FALSE}
+#self-reported anx/dep grouped by all_anxiety_depression proportions per all_anxiety_depression group/level
+mhd_anx_dep_per_all_anxiety_depression_prop_figure <- dat %>%
+  group_by(all_anxiety_depression) %>%
+  count(mhd.anxiety_depression, all_anxiety_depression) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = Prop*100
+  ) %>% 
+  select(all_anxiety_depression, 
+         mhd.anxiety_depression, 
+         Value) %>% 
+  pivot_wider(names_from = all_anxiety_depression,
+              values_from = Value) %>% 
+  filter(mhd.anxiety_depression == "Diagnosis") %>% 
+  mutate(Variable = "Self-reported anxiety/depressive disorder") %>% 
+  select(-mhd.anxiety_depression)
+
+mhd_anx_dep_per_all_anxiety_depression_prop_figure
+```
+
+```{r self-reported other diag per all_anxiety_depression prop for figure for figure, include=FALSE}
+#self-reported other diag grouped by all_anxiety_depression proportions per all_anxiety_depression group/level
+mhd_other_per_all_anxiety_depression_prop_figure <- dat %>%
+  group_by(all_anxiety_depression) %>%
+  count(mhd.other_diagnoses, all_anxiety_depression) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = Prop*100
+  ) %>%
+  select(all_anxiety_depression, 
+         mhd.other_diagnoses, 
+         Value) %>% 
+  pivot_wider(names_from = all_anxiety_depression,
+              values_from = Value) %>% 
+  filter(mhd.other_diagnoses == "Diagnosis") %>% 
+  mutate(Variable = "Self-reported other mental health disorder") %>% 
+  select(-mhd.other_diagnoses)
+
+mhd_other_per_all_anxiety_depression_prop_figure
+```
+
+```{r combined categorical table for figure, include=FALSE}
+categorical_table_figure <- sex_per_all_anxiety_depression_prop_figure %>% 
+  rbind(ethnicity_per_all_anxiety_depression_prop_figure,
+        highest_education_per_all_anxiety_depression_prop_figure,
+        child_trauma_per_all_anxiety_depression_prop_figure,
+        adult_trauma_per_all_anxiety_depression_prop_figure,
+        catastrophic_trauma_per_all_anxiety_depression_prop_figure,
+        mhfh_anx_dep_per_all_anxiety_depression_prop_figure,
+        mhfh_other_per_all_anxiety_depression_prop_figure,
+        mhd_anx_dep_per_all_anxiety_depression_prop_figure,
+        mhd_other_per_all_anxiety_depression_prop_figure) %>% 
+  select(Variable, `Single anxiety`, `Anxiety-anxiety`, `Anxiety-MDD`, `MDD only`)
+
+categorical_table_figure
+```
+
+```{r all variables vector for figure, include=FALSE}
+#Create vector to order factor for tables
+Variable_ordered_figure <- c(
+  "Age",
+  "Sex: Female",
+  "Ethnicity",
+  "Highest education: University degree",
+  "Highest education: A-levels",
+  "Highest education: GCSEs",
+  "Highest education: No qualifications",
+  "Family history: Anxiety/depressive disorder",
+  "Family history: Other mental health disorder",
+  "Childhood trauma",
+  "Adult trauma",
+  "Catastrophic trauma",
+  "Personality disorder",
+  "Self-reported anxiety/depressive disorder",
+  "Self-reported other mental health disorder",
+  "Age of onset",
+  "Recurrence",
+  "Current depression",
+  "Current anxiety",
+  "Anxiety PRS",
+  "MDD PRS",
+  "Neuroticism PRS",
+  "ADHD PRS",
+  "Autism PRS",
+  "Schizophrenia PRS",
+  "Educational attainment PRS"
+  )
+```
+
+```{r combine continuous/categorical variable descriptives tables for figures, include=FALSE}
+#Merge descriptive tables
+descriptives_figure_table_wide <- rbind(numeric_table_figure_reshaped_reduced,
+                                   categorical_table_figure) %>% 
+  select(Variable, `Single anxiety`, `Anxiety-anxiety`, `Anxiety-MDD`, `MDD only`) %>% 
+  mutate("Variable" = fct_relevel(
+      .f = Variable,
+      Variable_ordered_figure
+      )
+  ) %>% 
+  arrange(Variable)
+
+descriptives_figure_table_wide
+```
+
+```{r format combined descriptives table for figures}
+descriptives_figure_table <- descriptives_figure_table_wide %>%
+  add_column(blank = NA) %>% 
+  pivot_longer(
+    -Variable,
+    names_to = "comorbidity",
+    values_to = "value"
+  ) %>% 
+  mutate(comorbidity = 
+           fct_relevel(
+             .f = comorbidity,
+             "Single anxiety",
+             "Anxiety-anxiety",
+             "Anxiety-MDD",
+             "MDD only"
+           )
+         ) 
+
+descriptives_figure_table
+```
+
+
+
+#### Year variables
+```{r descriptives year variables barchart vertical bars}
+bar_descriptives_years_vertical <- 
+  descriptives_figure_table %>% 
+  filter(
+    Variable == "Age" | 
+      Variable == "Age of onset" | 
+      Variable == "Recurrence" 
+  ) %>%
+  ggplot(aes(y = value, 
+             x = Variable, 
+             fill = comorbidity)
+         ) + 
+  geom_bar(
+    stat = "identity", 
+    position = position_dodge(),
+    width = 1.2
+    #fill = GLADpalette #Not working for some reason
+    ) +
+  scale_fill_manual(breaks = c("Single anxiety","Anxiety-anxiety","Anxiety-MDD","MDD only"),
+                    values = c(GLADpalette, "#000000")) +
+  geom_text( 
+    aes(
+      label = format(round(value,1), nsmall=1)
+      ),
+    size = 1.7, 
+    position = position_dodge(width = 1.2),
+    hjust = 0.6,
+    vjust = -0.3
+    ) + #Add % labels on top of bars
+  labs(
+    y = "Years/Number of episodes (mean)",
+    fill = element_blank()) + #Remove legend title
+  theme(
+    text = element_text(color = "black",
+                        size = 8),
+    axis.text = element_text(color = "black",
+                             margin = 0),
+    #axis.ticks.x.margin = unit(0, "cm"),
+    axis.title.x = element_blank(),
+    axis.ticks = element_blank(),
+    legend.background = element_blank(),
+    legend.box.background = element_blank(),
+    legend.position = "bottom",
+    plot.margin = margin(0, 20, 0, 5),
+    panel.background = element_blank(), 
+    panel.grid.minor = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(
+      colour = "grey",
+      linetype = "dashed",
+      size = 0.2
+      )
+    )
+
+bar_descriptives_years_vertical
+```
+
+#### Symptom score variables
+```{r descriptives symptoms variables barchart vertical bars}
+bar_descriptives_symptoms_vertical <- 
+  descriptives_figure_table %>% 
+  filter(
+    Variable == "Current anxiety symtoms" | 
+      Variable == "Current depressive symtoms" 
+  ) %>%
+  mutate(
+    Variable = fct_recode(
+      .f = Variable,
+      "Current\nanxiety symtoms" = "Current anxiety symtoms",
+      "Current\ndepressive symtoms" = "Current depressive symtoms"
+     )
+    ) %>% 
+  ggplot(aes(y = value, 
+             x = Variable, 
+             fill = comorbidity)
+         ) + 
+  geom_bar(
+    stat = "identity", 
+    position = position_dodge(),
+    width = 1.2
+    #fill = GLADpalette #Not working for some reason
+    ) +
+  scale_fill_manual(breaks = c("Single anxiety","Anxiety-anxiety","Anxiety-MDD","MDD only"),
+                    values = c(GLADpalette, "#000000")) +
+  geom_text( 
+    aes(
+      label = format(round(value,1), nsmall=1)
+      ),
+    size = 1.7, 
+    position = position_dodge(width = 1.2),
+    hjust = 0.6,
+    vjust = -0.3
+    ) + #Add % labels on top of bars
+  labs(
+    y = "Symptom scores (mean)",
+    fill = element_blank()) + #Remove legend title
+  theme(
+    text = element_text(color = "black",
+                        size = 8),
+    axis.text = element_text(color = "black",
+                             margin = 0),
+    #axis.ticks.x.margin = unit(0, "cm"),
+    axis.title.x = element_blank(),
+    axis.ticks = element_blank(),
+    legend.background = element_blank(),
+    legend.box.background = element_blank(),
+    legend.position = "bottom",
+    plot.margin = margin(0, 20, 0, 5),
+    panel.background = element_blank(), 
+    panel.grid.minor = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(
+      colour = "grey",
+      linetype = "dashed",
+      size = 0.2
+      )
+    )
+
+bar_descriptives_symptoms_vertical
+```
+
+#### Trauma variables
+```{r descriptives trauma variables barchart vertical bars}
+bar_descriptives_trauma_vertical <- 
+  descriptives_figure_table %>% 
+  filter(
+    Variable == "Childhood trauma" | 
+      Variable == "Adult trauma" | 
+      Variable == "Catastrophic trauma"
+  ) %>%
+  ggplot(aes(y = value/100, 
+             x = Variable, 
+             fill = comorbidity)
+         ) + 
+  geom_bar(
+    stat = "identity", 
+    position = position_dodge(),
+    width = 1.2
+    #fill = GLADpalette #Not working for some reason
+    ) +
+  scale_fill_manual(breaks = c("Single anxiety","Anxiety-anxiety","Anxiety-MDD","MDD only"),
+                    values = c(GLADpalette, "#000000")) +
+  geom_text( 
+    aes(
+      label = ifelse(value > 1, scales::percent(value/100,accuracy=1), 
+                     scales::percent(value/100,accuracy=0.1)
+                     )
+      ),
+    size = 1.7, 
+    position = position_dodge(width = 1.2),
+    hjust = 0.4,
+    vjust = -0.3
+    ) + #Add % labels on top of bars
+  labs(
+    y = "Percent of sample",
+    fill = element_blank()) + #Remove legend title
+  #coord_flip() + #Flip x and y axis
+  theme(
+    text = element_text(color = "black",
+                        size = 8),
+    axis.text = element_text(color = "black",
+                             margin = 0),
+    #axis.ticks.x.margin = unit(0, "cm"),
+    axis.title.x = element_blank(),
+    axis.ticks = element_blank(),
+    legend.background = element_blank(),
+    legend.box.background = element_blank(),
+    legend.position = "bottom",
+    plot.margin = margin(5, 20, 1, 5),
+    panel.background = element_blank(), 
+    panel.grid.minor = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(
+      colour = "grey",
+      linetype = "dashed",
+      size = 0.2
+      )
+    ) +
+  scale_y_continuous(limits = c(0, 1), #Y-axis goes from 0-1
+                     breaks=seq(0,1, 0.1), #Y-axis goes from 0 - 1, with tick marks every 0.1
+                     labels = scales::percent_format(accuracy = 5L), #Makes y-axis % and removes decimals
+                     expand = c(0,0))
+
+bar_descriptives_trauma_vertical
+```
+
+#### Categorical variables (percentages)
+
+```{r descriptives percents barchart vertical bars}
+bar_descriptives_percents_vertical <- 
+  descriptives_figure_table %>% 
+  filter(
+    Variable == "Sex: Female" | 
+      Variable == "Ethnicity" | 
+      Variable == "Highest education: University degree" |
+      Variable == "Highest education: A-levels" |
+      Variable == "Highest education: GCSEs" |
+      Variable == "Highest education: No qualifications" |
+      #Variable == "Family history: Anxiety/depressive disorder" |
+      #Variable == "Family history: Other mental health disorder" |
+      Variable == "Self-reported anxiety/depressive disorder" |
+      Variable == "Self-reported other mental health disorder"
+  ) %>% 
+  mutate(
+    Variable = fct_recode(
+      .f = Variable,
+      "Sex:\nFemale" = "Sex: Female",
+      "Ethnicity:\nWhite" = "Ethnicity",
+      "Highest education:\nUniversity degree" = "Highest education: University degree",
+      "Highest education:\nA-levels" = "Highest education: A-levels",
+      "Highest education:\nGCSEs" = "Highest education: GCSEs",
+      "Highest education:\nNo qualifications" = "Highest education: No qualifications",
+      #"Family history:\nAnxiety/depressive\ndisorder" = "Family history: Anxiety/depressive disorder",
+      #"Family history:\nOther\nmental health disorder" = "Family history: Other mental health disorder",
+      "Self-reported\nanxiety/depressive\ndisorder" = "Self-reported anxiety/depressive disorder",
+      "Self-reported\nother\nmental health disorder" = "Self-reported other mental health disorder"
+    )
+  ) %>% 
+  ggplot(aes(y = value/100, 
+             x = Variable, 
+             fill = comorbidity)
+         ) + 
+  geom_bar(
+    stat = "identity", 
+    position = position_dodge(),
+    width = 1.2
+    #fill = GLADpalette #Not working for some reason
+    ) +
+  scale_fill_manual(breaks = c("Single anxiety","Anxiety-anxiety","Anxiety-MDD","MDD only"),
+                    values = c(GLADpalette, "#000000")) +
+  geom_text( 
+    aes(
+      label = ifelse(value > 1, scales::percent(value/100,accuracy=1), 
+                     scales::percent(value/100,accuracy=0.1)
+                     )
+      ),
+    size = 1.7, 
+    position = position_dodge(width = 1.2),
+    hjust = 0.4,
+    vjust = -0.3
+    ) + #Add % labels on top of bars
+  labs(
+    y = "Percent of sample",
+    fill = element_blank()) + #Remove legend title
+  #coord_flip() + #Flip x and y axis
+  theme(
+    text = element_text(color = "black",
+                        size = 8),
+    axis.text = element_text(color = "black",
+                             margin = 0),
+    #axis.ticks.x.margin = unit(0, "cm"),
+    axis.title.x = element_blank(),
+    axis.ticks = element_blank(),
+    legend.background = element_blank(),
+    legend.box.background = element_blank(),
+    legend.position = "bottom",
+    plot.margin = margin(5, 20, 1, 5),
+    panel.background = element_blank(), 
+    panel.grid.minor = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(
+      colour = "grey",
+      linetype = "dashed",
+      size = 0.2
+      )
+    ) +
+  scale_y_continuous(limits = c(0, 1), #Y-axis goes from 0-1
+                     breaks=seq(0,1, 0.1), #Y-axis goes from 0 - 1, with tick marks every 0.1
+                     labels = scales::percent_format(accuracy = 5L), #Makes y-axis % and removes decimals
+                     expand = c(0,0))
+
+bar_descriptives_percents_vertical
+```
+
+#### Combined: All main analysis descriptives
+
+```{r patch all descriptives barcharts}
+bar_descriptives_all_vertical <- ((bar_descriptives_years_vertical + theme(legend.position = "none")) |
+                           (bar_descriptives_trauma_vertical + theme(legend.position = "none")) | 
+                             (bar_descriptives_symptoms_vertical + theme(legend.position = "none"))) /
+  (bar_descriptives_percents_vertical + theme(legend.position = "bottom"))  +
+  plot_layout(heights = c(2,1.5)) + 
+  plot_annotation(tag_levels = "A") 
+
+bar_descriptives_all_vertical
+```
+
+```{r save all descriptives vertical barchart horizontal}
+#grDevices::dev.set(1)
+
+#Save jpeg of barchart
+ggsave(paste0("barchart_descriptives_all_vertical_", Sys.Date(), ".jpeg"),
+       path = figure_path,
+       plot = bar_descriptives_all_vertical,
+       width = 10,
+       height = 6,
+       dpi = 150,
+       units = "in")
+
+#Save tiff of barchart
+ggsave(paste0("barchart_descriptives_all_vertical_", Sys.Date(), ".tiff"),
+      path = figure_path,
+      plot = bar_descriptives_all_vertical,
+      width = 10,
+      height = 6,
+      dpi = 150,
+      units = "in")
+```
+
+## Analysis 2a variables
+
+Family history only - all others will be same as main analysis.
+
+### Table
+```{r descriptives table for analysis 2a, echo=FALSE}
+descriptives.table.all_analysis_2a <- descriptives %>%
+  filter(
+    str_detect(Variable, 'Family history')
+    ) 
+
+#descriptives.table.all_analysis_2a
+kable(descriptives.table.all_analysis_2a)
+```
+
+### Figure
+
+```{r family history descriptives barchart vertical bars}
+bar_descriptives_mhfh_vertical <- 
+  descriptives_figure_table %>% 
+  filter(
+    Variable == "Family history: Anxiety/depressive disorder" |
+      Variable == "Family history: Other mental health disorder"
+  ) %>% 
+  mutate(
+    Variable = fct_recode(
+      .f = Variable,
+      "Family history:\nAnxiety/depressive\ndisorder" = "Family history: Anxiety/depressive disorder",
+      "Family history:\nOther\nmental health disorder" = "Family history: Other mental health disorder"
+    )
+  ) %>% 
+  ggplot(aes(y = value/100, 
+             x = Variable, 
+             fill = comorbidity)
+         ) + 
+  geom_bar(
+    stat = "identity", 
+    position = position_dodge(),
+    width = 1.2
+    #fill = GLADpalette #Not working for some reason
+    ) +
+  scale_fill_manual(breaks = c("Single anxiety","Anxiety-anxiety","Anxiety-MDD","MDD only"),
+                    values = c(GLADpalette, "#000000")) +
+  geom_text( 
+    aes(
+      label = ifelse(value > 1, scales::percent(value/100,accuracy=1), 
+                     scales::percent(value/100,accuracy=0.1)
+                     )
+      ),
+    size = 3, 
+    position = position_dodge(width = 1.2),
+    hjust = 0.4,
+    vjust = -0.3
+    ) + #Add % labels on top of bars
+  labs(
+    y = "Percent of sample",
+    fill = element_blank()) + #Remove legend title
+  #coord_flip() + #Flip x and y axis
+  theme(
+    text = element_text(color = "black",
+                        size = 11),
+    axis.text = element_text(color = "black",
+                             margin = 0),
+    #axis.ticks.x.margin = unit(0, "cm"),
+    axis.title.x = element_blank(),
+    axis.ticks = element_blank(),
+    legend.background = element_blank(),
+    legend.box.background = element_blank(),
+    legend.position = "bottom",
+    plot.margin = margin(5, 20, 1, 5),
+    panel.background = element_blank(), 
+    panel.grid.minor = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(
+      colour = "grey",
+      linetype = "dashed",
+      size = 0.2
+      )
+    ) +
+  scale_y_continuous(limits = c(0, 1), #Y-axis goes from 0-1
+                     breaks=seq(0,1, 0.1), #Y-axis goes from 0 - 1, with tick marks every 0.1
+                     labels = scales::percent_format(accuracy = 5L), #Makes y-axis % and removes decimals
+                     expand = c(0,0))
+
+bar_descriptives_mhfh_vertical
+```
+
+```{r save family history descriptives barchart vertical}
+#grDevices::dev.set(1)
+
+# #Save jpeg of barchart
+ggsave(paste0("barchart_descriptives_mhfh_vertical_", Sys.Date(), ".jpeg"),
+       path = figure_path,
+       plot = bar_descriptives_mhfh_vertical,
+       width = 5,
+       height = 3.5,
+       dpi = 150,
+       units = "in")
+
+#Save tiff of barchart
+#ggsave(paste0("barchart_descriptives_mhfh_vertical_", Sys.Date(), ".tiff"),
+#       path = figure_path,
+#       plot = bar_descriptives_mhfh_vertical,
+#       width = 6,
+#       height = 5.5,
+#       dpi = 150,
+#       units = "in")
+```
+
+## Analysis 2b variables
+
+PRS only - all others will be same as main analysis.
+
+### Table
+
+```{r descriptives table for analysis 2b, echo=FALSE}
+descriptives.table.all_analysis_2b <- descriptives %>%
+  filter(
+    str_detect(Variable, 'PRS')
+    ) 
+
+#descriptives.table.all_analysis_2a
+kable(descriptives.table.all_analysis_2b)
+```
+
+### Figure
+
+```{r PRS descriptives barchart vertical bars}
+bar_descriptives_prs_vertical <- 
+  descriptives_figure_table %>% 
+  filter(
+    Variable == "Anxiety PRS" |
+      Variable == "MDD PRS" |
+      Variable == "Neuroticism PRS" |
+      Variable == "ADHD PRS" |
+      Variable == "Autism PRS" |
+      Variable == "Schizophrenia PRS" |
+      Variable == "Educational attainment PRS" 
+  ) %>% 
+  ggplot(aes(y = value, 
+             x = Variable, 
+             fill = comorbidity)
+         ) + 
+  geom_bar(
+    stat = "identity", 
+    position = position_dodge(),
+    width = 1.2
+    #fill = GLADpalette #Not working for some reason
+    ) +
+  scale_fill_manual(breaks = c("Single anxiety","Anxiety-anxiety","Anxiety-MDD","MDD only"),
+                    values = c(GLADpalette, "#000000")) +
+  geom_text( 
+    aes(
+      label = round(value, 2)
+      ),
+    size = 1.7, 
+    position = position_dodge(width = 1.2),
+    hjust = 0.4,
+    vjust = -0.3
+    ) + #Add % labels on top of bars
+  labs(
+    y = "PRS",
+    fill = element_blank()) + #Remove legend title
+  #coord_flip() + #Flip x and y axis
+  theme(
+    text = element_text(color = "black",
+                        size = 8),
+    axis.text = element_text(color = "black",
+                             margin = 0),
+    #axis.ticks.x.margin = unit(0, "cm"),
+    axis.title.x = element_blank(),
+    axis.ticks = element_blank(),
+    legend.background = element_blank(),
+    legend.box.background = element_blank(),
+    legend.position = "bottom",
+    plot.margin = margin(5, 20, 1, 5),
+    panel.background = element_blank(), 
+    panel.grid.minor = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(
+      colour = "grey",
+      linetype = "dashed",
+      size = 0.2
+      )
+    ) 
+
+bar_descriptives_prs_vertical
+```
+
+```{r save PRS descriptives barchart vertical}
+#grDevices::dev.set(1)
+
+# #Save jpeg of barchart
+ggsave(paste0("barchart_descriptives_prs_vertical_", Sys.Date(), ".jpeg"),
+       path = figure_path,
+       plot = bar_descriptives_prs_vertical,
+       width = 8,
+       height = 5.5,
+       dpi = 150,
+       units = "in")
+
+#Save tiff of barchart
+#ggsave(paste0("barchart_descriptives_prs_vertical_", Sys.Date(), ".tiff"),
+#       path = figure_path,
+#       plot = bar_descriptives_prs_vertical,
+#       width = 6,
+#       height = 5.5,
+#       dpi = 150,
+#       units = "in")
+```
+
+
+# Temporal sequence
+
+## Main analysis variables
+
+### Table
+
+Create tables for all descriptives (including those for analyses 2a/2b - these will be filtered out in tables applicable only to the main analysis).    
+
+*Continuous (or count) variables include:*  
+- Age (dem.age)  
+- PHQ9 sum score (phq9.sum_score)  
+- GAD7 sum score (gad7.sum_score)     
+- Age of onset (min_age_of_onset)  
+- Recurence (max_recurrence)  
+- Anxiety PRS  
+- Depression PRS  
+- NeuroticismPRS  
+- ADHD PRS  
+- Autism PRS  
+- Schizophrenia PR  
+- Educational attainment PRS  
+
+
+```{r tempseq Continuous variables table, include=FALSE}
+#Create table
+numeric_table_tempseq <- dat %>% 
+  group_by(temporal_sequence_binomial) %>%
+  summarise_at(
+    vars(
+      dem.age,
+      phq9.sum_score,
+      gad7.sum_score,
+      min_age_of_onset,
+      max_recurrence,
+      anxietyPRS_z,
+      depression05_PRS_z,
+      neuroticismPRS_z,
+      adhdPRS_z,
+      autismPRS_z,
+      schizophreniaPRS_z,
+      educationPRS_z
+      ),
+    .funs =
+      list(
+        ~mean(., na.rm = T),
+        ~sd(., na.rm = T),
+        mode = ~mode_func(., na.rm = T),
+        ~median(., na.rm = T),
+        quartile1 = ~quantile(., probs = 0.25, na.rm = T),
+        quartile3 = ~quantile(., probs = 0.75, na.rm = T),
+        ~min(., na.rm = T),
+        ~max(., na.rm = T),
+        missing = ~n_missing(.),
+        ~skew(., na.rm = T),
+        kurtosis = ~kurtosi(., na.rm = T)
+      )
+  ) %>% 
+  drop_na() %>% 
+  arrange(temporal_sequence_binomial)
+
+numeric_table_tempseq
+```
+
+```{r tempseq Continuous variables reshape table, include=FALSE}
+#Reshape continuous data table - make wide data long 
+numeric_table_reshaped_tempseq <- numeric_table_tempseq %>% 
+  gather(key, value, -temporal_sequence_binomial) %>% 
+  separate(
+    key,
+    c("variable", "measure"),
+    sep = "_(?=[^_]+$)" # separate by last _
+    ) %>% #separates the column 'key' into 'variable' and 'column' measure, indicated as they are separated by _
+  mutate(measure = factor(
+    x = measure,
+    levels =  c( # this is the order I want my columns to appear in
+     "missing",
+     "min",
+     "max",
+     "mean", 
+     "median",
+     "quartile1",
+     "quartile3",
+     "mode",
+     "sd",
+     "skew",
+     "kurtosis"
+    ))) %>% 
+  spread(measure, value) #spread to get mean, mode and median column etc
+
+
+numeric_table_reshaped_tempseq
+```
+
+```{r tempseq Continuous reduce table to means and sd, include=FALSE}
+numeric_table_reshaped_reduced_nonparametric_tempseq <- numeric_table_reshaped_tempseq %>%
+  mutate(
+    "Variable" = fct_recode(
+      .f = variable,
+      "Age (years, sd)" = "dem.age",
+      "Current depression (total score, sd)" = "phq9.sum_score",
+      "Current anxiety (total score, sd)" = "gad7.sum_score",
+      "Age of onset (years, sd)" = "min_age_of_onset",
+      "Recurrence (number of episodes, sd)" = "max_recurrence",
+      "Anxiety PRS (total score, sd)" = "anxietyPRS_z",
+      "MDD PRS (total score, sd)" = "depression05_PRS_z",
+      "Neuroticism PRS (total score, sd)" = "neuroticismPRS_z",
+      "ADHD PRS (total score, sd)" = "adhdPRS_z",
+      "Autism PRS (total score, sd)" = "autismPRS_z",
+      "Schizophrenia PRS (total score, sd)" = "schizophreniaPRS_z",
+      "Educational attainment PRS (total score, sd)" = "educationPRS_z"
+),
+    "Variable" = fct_relevel(
+      .f = Variable,
+      Variable_continuous_ordered
+      ),
+    "Mean" = case_when(
+      mean >= 1 ~ round(mean, digits = 1),
+      mean < 1 ~ round(mean, digits = 2)
+    ),
+    "SD" = case_when(
+      sd >= 1 ~ round(sd, digits = 1),
+      sd < 1 ~ round(sd, digits = 2)
+    ),
+  ) %>%
+  select(
+    "Temporal sequence" = temporal_sequence_binomial,
+    Variable,
+    "Mean",
+    "SD",
+  ) %>%
+  arrange(Variable) %>%
+  arrange(`Temporal sequence`) %>%
+  mutate(Value = paste0(format(`Mean`, nsmall = 1), " (",format(`SD`,2, nsmall = 1),")")) %>%
+  select(
+    "Temporal sequence",
+    "Variable",
+    "Value") %>%
+  pivot_wider(
+   names_from = "Temporal sequence",
+    values_from = Value
+   ) 
+  
+
+kable(numeric_table_reshaped_reduced_nonparametric_tempseq)
+```
+
+Create tables for categorical variable frequencies    
+
+*Catgorical variables include:*  
+- Sex  
+- Ethnicity  
+- Highest education 
+- Childhood trauma  
+- Adult trauma  
+- Catastrophic trauma  
+- Family history of anx/dep  
+- Family history of other MH disorder  
+- Self-reported anx/dep disorder  
+- Self-reported other MH disorders  
+
+```{r tempseq sex per temporal_sequence_binomial prop for table, include=FALSE}
+#sex grouped by temporal_sequence_binomial proportions per temporal_sequence_binomial group/level
+sex_per_temporal_sequence_binomial_prop_table_tempseq <- dat %>%
+  group_by(temporal_sequence_binomial) %>%
+  count(dem.sex, temporal_sequence_binomial) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(temporal_sequence_binomial, dem.sex, Value) %>% 
+  pivot_wider(names_from = temporal_sequence_binomial,
+              values_from = Value) %>% 
+  filter(dem.sex == "Female") %>% 
+  mutate(Variable = "Sex (% female, n)") %>% 
+  select(-dem.sex)
+
+sex_per_temporal_sequence_binomial_prop_table_tempseq
+```
+
+```{r tempseq ethnicity per temporal_sequence_binomial prop for table, include=FALSE}
+#ethnicity grouped by temporal_sequence_binomial proportions per temporal_sequence_binomial group/level
+ethnicity_per_temporal_sequence_binomial_prop_table_tempseq <- dat %>%
+  group_by(temporal_sequence_binomial) %>%
+  count(dem.ethnicity_collapsed, temporal_sequence_binomial) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(temporal_sequence_binomial, dem.ethnicity_collapsed, Value) %>% 
+  pivot_wider(names_from = temporal_sequence_binomial,
+              values_from = Value) %>% 
+  filter(dem.ethnicity_collapsed == "White") %>% 
+  mutate(Variable = "Ethnicity (% white, n)") %>% 
+  select(-dem.ethnicity_collapsed)
+
+
+ethnicity_per_temporal_sequence_binomial_prop_table_tempseq
+```
+
+```{r tempseq highest education per temporal_sequence_binomial prop for table, include=FALSE}
+#highest education grouped by temporal_sequence_binomial proportions per temporal_sequence_binomial group/level
+highest_education_per_temporal_sequence_binomial_prop_table_tempseq <- dat %>%
+  group_by(temporal_sequence_binomial) %>%
+  count(dem.highest_education_ordered_collapsed, temporal_sequence_binomial) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+      Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(temporal_sequence_binomial, dem.highest_education_ordered_collapsed, Value) %>% 
+  pivot_wider(names_from = temporal_sequence_binomial,
+              values_from = Value) %>% 
+  filter(dem.highest_education_ordered_collapsed == "College or university degree" |
+           dem.highest_education_ordered_collapsed == "A levels/AS levels or equivalent"|
+           dem.highest_education_ordered_collapsed == "O levels/GCSEs or equivalent",
+           dem.highest_education_ordered_collapsed == "No qualifications") %>% 
+  mutate(Variable = case_when(
+    dem.highest_education_ordered_collapsed == "College or university degree" ~ "Highest education: University degree (%, n)",
+    dem.highest_education_ordered_collapsed == "A levels/AS levels or equivalent" ~ "Highest education: A-levels (%, n)",
+    dem.highest_education_ordered_collapsed == "O levels/GCSEs or equivalent" ~ "Highest education: GCSEs (%, n)",
+    dem.highest_education_ordered_collapsed == "No qualifications"  ~ "Highest education: No qualifications (%, n)"
+    )
+  ) %>% 
+  select(-dem.highest_education_ordered_collapsed)
+
+highest_education_per_temporal_sequence_binomial_prop_table_tempseq
+```
+
+```{r tempseq any childhood trauma per temporal_sequence_binomial prop for table, include=FALSE}
+#childhood trauma (child maltreatment) grouped by temporal_sequence_binomial proportions per temporal_sequence_binomial group/level
+childhood_trauma_per_temporal_sequence_binomial_prop_table_tempseq <- dat %>%
+  group_by(temporal_sequence_binomial) %>%
+  count(cts.any_maltreatment_binary, temporal_sequence_binomial) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(temporal_sequence_binomial, 
+         cts.any_maltreatment_binary, 
+         Value) %>% 
+  pivot_wider(names_from = temporal_sequence_binomial,
+              values_from = Value) %>% 
+  filter(cts.any_maltreatment_binary == "Childhood maltreatment") %>% 
+  mutate(Variable = case_when(
+    cts.any_maltreatment_binary == "Childhood maltreatment" ~ "Childhood trauma (% present, n)"
+    )
+  ) %>% 
+  select(-cts.any_maltreatment_binary)
+
+childhood_trauma_per_temporal_sequence_binomial_prop_table_tempseq
+```
+
+```{r tempseq any adult trauma per temporal_sequence_binomial prop for table, include=FALSE}
+#adult trauma (partner abuse) grouped by temporal_sequence_binomial proportions per temporal_sequence_binomial group/level
+adult_trauma_per_temporal_sequence_binomial_prop_table_tempseq <- dat %>%
+  group_by(temporal_sequence_binomial) %>%
+  count(ats.partner_abuse_binary, temporal_sequence_binomial) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(temporal_sequence_binomial, 
+         ats.partner_abuse_binary, 
+         Value) %>% 
+  pivot_wider(names_from = temporal_sequence_binomial,
+              values_from = Value) %>% 
+  filter(ats.partner_abuse_binary == "Partner abuse") %>% 
+  mutate(Variable = case_when(
+    ats.partner_abuse_binary == "Partner abuse" ~ "Adult trauma (% present, n)"
+    )
+  ) %>% 
+  select(-ats.partner_abuse_binary)
+
+adult_trauma_per_temporal_sequence_binomial_prop_table_tempseq
+```
+
+```{r tempseq any catastrophic trauma per temporal_sequence_binomial prop for table, include=FALSE}
+#catastrophic trauma (partner abuse) grouped by temporal_sequence_binomial proportions per temporal_sequence_binomial group/level
+catastrophic_trauma_per_temporal_sequence_binomial_prop_table_tempseq <- dat %>%
+  group_by(temporal_sequence_binomial) %>%
+  count(ats.catastrophic_trauma_binary, temporal_sequence_binomial) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(temporal_sequence_binomial, 
+         ats.catastrophic_trauma_binary, 
+         Value) %>% 
+  pivot_wider(names_from = temporal_sequence_binomial,
+              values_from = Value) %>% 
+  filter(ats.catastrophic_trauma_binary == "Catastrophic trauma") %>% 
+  mutate(Variable = "Catastrophic trauma (% present, n)") %>% 
+  select(-ats.catastrophic_trauma_binary)
+
+catastrophic_trauma_per_temporal_sequence_binomial_prop_table_tempseq
+```
+
+```{r tempseq family history anx/dep per temporal_sequence_binomial prop for table, include=FALSE}
+#family history anx/dep grouped by temporal_sequence_binomial proportions per temporal_sequence_binomial group/level
+mhfh_anx_dep_per_temporal_sequence_binomial_prop_table_tempseq <- dat %>%
+  group_by(temporal_sequence_binomial) %>%
+  count(mhfh.anxiety_or_depression, temporal_sequence_binomial) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(temporal_sequence_binomial, mhfh.anxiety_or_depression, Value) %>% 
+  pivot_wider(names_from = temporal_sequence_binomial,
+              values_from = Value) %>% 
+  filter(mhfh.anxiety_or_depression == "Positive family history") %>% 
+  mutate(Variable = "Family history: Anxiety/depressive disorder (% positive, n)") %>% 
+  select(-mhfh.anxiety_or_depression)
+
+mhfh_anx_dep_per_temporal_sequence_binomial_prop_table_tempseq
+```
+
+```{r tempseq family history other per temporal_sequence_binomial prop for table, include=FALSE}
+#family history other grouped by temporal_sequence_binomial proportions per temporal_sequence_binomial group/level
+mhfh_other_per_temporal_sequence_binomial_prop_table_tempseq <- dat %>%
+  group_by(temporal_sequence_binomial) %>%
+  count(mhfh.other_disorders, temporal_sequence_binomial) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(temporal_sequence_binomial, mhfh.other_disorders, Value) %>% 
+  pivot_wider(names_from = temporal_sequence_binomial,
+              values_from = Value) %>% 
+  filter(mhfh.other_disorders == "Positive family history") %>% 
+  mutate(Variable = "Family history: Other mental health disorder (% positive, n)") %>% 
+  select(-mhfh.other_disorders)
+
+mhfh_other_per_temporal_sequence_binomial_prop_table_tempseq
+```
+
+```{r tempseq self-reported anx/dep per temporal_sequence_binomial prop for table, include=FALSE}
+#self-reported anx/dep grouped by temporal_sequence_binomial proportions per temporal_sequence_binomial group/level
+mhd_anx_dep_per_temporal_sequence_binomial_prop_table_tempseq <- dat %>%
+  group_by(temporal_sequence_binomial) %>%
+  count(mhd.anxiety_depression, temporal_sequence_binomial) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(temporal_sequence_binomial, mhd.anxiety_depression, Value) %>% 
+  pivot_wider(names_from = temporal_sequence_binomial,
+              values_from = Value) %>% 
+  filter(mhd.anxiety_depression == "Diagnosis") %>% 
+  mutate(Variable = "Self-reported anxiety/depressive disorder (% diagnosis, n)") %>% 
+  select(-mhd.anxiety_depression)
+
+mhd_anx_dep_per_temporal_sequence_binomial_prop_table_tempseq
+```
+
+```{r tempseq self-reported other diag per temporal_sequence_binomial prop for table, include=FALSE}
+#self-reported other diag grouped by temporal_sequence_binomial proportions per temporal_sequence_binomial group/level
+mhd_other_per_temporal_sequence_binomial_prop_table_tempseq <- dat %>%
+  group_by(temporal_sequence_binomial) %>%
+  count(mhd.other_diagnoses, temporal_sequence_binomial) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = paste0(Prop*100," (", n,")")
+  ) %>% 
+  select(temporal_sequence_binomial, mhd.other_diagnoses, Value) %>% 
+  pivot_wider(names_from = temporal_sequence_binomial,
+              values_from = Value) %>% 
+  filter(mhd.other_diagnoses == "Diagnosis") %>% 
+  mutate(Variable = "Self-reported other mental health disorder (% diagnosis, n)") %>% 
+  select(-mhd.other_diagnoses)
+
+mhd_other_per_temporal_sequence_binomial_prop_table_tempseq
+```
+
+```{r tempseq combined categorical table, include=FALSE}
+categorical_table_tempseq <- sex_per_temporal_sequence_binomial_prop_table_tempseq %>% 
+  rbind(ethnicity_per_temporal_sequence_binomial_prop_table_tempseq,
+        highest_education_per_temporal_sequence_binomial_prop_table_tempseq,
+        mhfh_anx_dep_per_temporal_sequence_binomial_prop_table_tempseq,
+        mhfh_other_per_temporal_sequence_binomial_prop_table_tempseq,
+        childhood_trauma_per_temporal_sequence_binomial_prop_table_tempseq,
+        adult_trauma_per_temporal_sequence_binomial_prop_table_tempseq,
+        catastrophic_trauma_per_temporal_sequence_binomial_prop_table_tempseq,
+        mhd_anx_dep_per_temporal_sequence_binomial_prop_table_tempseq,
+        mhd_other_per_temporal_sequence_binomial_prop_table_tempseq) %>% 
+  select(Variable, `Anxiety-first`, `MDD-first`)
+
+categorical_table_tempseq
+```
+
+```{r tempseq combined all analyses continuous/categorical variable tables, echo=FALSE}
+#Merge descriptive tables
+descriptives_tempseq <- rbind(numeric_table_reshaped_reduced_nonparametric_tempseq,
+                      categorical_table_tempseq) %>% 
+  select(Variable, `Anxiety-first`, `MDD-first`) %>% 
+  mutate("Variable" = fct_relevel(
+      .f = Variable,
+      Variable_ordered
+      )
+  ) %>% 
+  arrange(Variable)
+
+kable(descriptives_tempseq)
+```
+
+```{r tempseq descriptives table for main analysis, echo=FALSE}
+descriptives.table.all_tempseq_main_analysis <- descriptives_tempseq %>%
+  filter(!str_detect(Variable, 'PRS'),
+         !str_detect(Variable, 'Family history')
+         ) 
+
+#descriptives.table.all_tempseq_main_analysis
+kable(descriptives.table.all_tempseq_main_analysis)
+```
+
+### Figure
+
+#### Continuous variables
+
+```{r tempseq Continuous variables table for figure, include=FALSE}
+#With unadjusted age and age of onset variables
+#Create table
+numeric_table_tempseq_figure <- dat %>% 
+  group_by(temporal_sequence_binomial) %>%
+  summarise_at(
+    vars(
+      dem.age,
+      phq9.sum_score,
+      gad7.sum_score,
+      min_age_of_onset,
+      max_recurrence,
+      anxietyPRS_z,
+      depression05_PRS_z,
+      neuroticismPRS_z,
+      adhdPRS_z,
+      autismPRS_z,
+      schizophreniaPRS_z,
+      educationPRS_z
+      ),
+    .funs =
+      list(
+        ~mean(., na.rm = T),
+        ~sd(., na.rm = T),
+        mode = ~mode_func(., na.rm = T),
+        ~median(., na.rm = T),
+        quartile1 = ~quantile(., probs = 0.25, na.rm = T),
+        quartile3 = ~quantile(., probs = 0.75, na.rm = T),
+        ~min(., na.rm = T),
+        ~max(., na.rm = T),
+        missing = ~n_missing(.),
+        ~skew(., na.rm = T),
+        kurtosis = ~kurtosi(., na.rm = T)
+      )
+  ) %>% 
+  arrange(temporal_sequence_binomial)
+
+numeric_table_tempseq_figure
+```
+
+```{r tempseq Continuous variables reshape table for figure, include=FALSE}
+#Reshape continuous data table - make wide data long 
+numeric_table_tempseq_figure_reshaped <- numeric_table_tempseq_figure %>% 
+  gather(key, value, -temporal_sequence_binomial) %>% 
+  separate(
+    key,
+    c("variable", "measure"),
+    sep = "_(?=[^_]+$)" # separate by last _
+    ) %>% #separates the column 'key' into 'variable' and 'column' measure, indicated as they are separated by _
+  mutate(measure = factor(
+    x = measure,
+    levels =  c( # this is the order I want my columns to appear in
+     "missing",
+     "min",
+     "max",
+     "mean", 
+     "median",
+     "quartile1",
+     "quartile3",
+     "mode",
+     "sd",
+     "skew",
+     "kurtosis"
+    ))) %>% 
+  spread(measure, value) #spread to get mean, mode and median column etc
+
+
+numeric_table_tempseq_figure_reshaped
+```
+
+```{r tempseq Continuous reduce table to means for figure, include=FALSE}
+numeric_table_tempseq_figure_reshaped_reduced <- numeric_table_tempseq_figure_reshaped %>%
+  mutate(
+    "Variable" = fct_recode(
+      .f = variable,
+      "Age" = "dem.age",
+      "Current depressive symtoms" = "phq9.sum_score",
+      "Current anxiety symtoms" = "gad7.sum_score",
+      "Age of onset" = "min_age_of_onset",
+      "Recurrence" = "max_recurrence",
+      "Anxiety PRS" = "anxietyPRS_z",
+      "MDD PRS" = "depression05_PRS_z",
+      "Neuroticism PRS" = "neuroticismPRS_z",
+      "ADHD PRS" = "adhdPRS_z",
+      "Autism PRS" = "autismPRS_z",
+      "Schizophrenia PRS" = "schizophreniaPRS_z",
+      "Educational attainment PRS" = "educationPRS_z"
+      ),
+    "Mean" = round(mean, digits = 2)
+  ) %>%
+  select(
+    "Comorbidity grouping" = temporal_sequence_binomial,
+    Variable,
+    "Mean"
+  ) %>%
+  arrange(Variable) %>%
+  arrange(`Comorbidity grouping`) %>%
+  select(
+    "Comorbidity grouping",
+    "Variable",
+    "Value" = "Mean") %>%
+  pivot_wider(
+   names_from = "Comorbidity grouping",
+    values_from = Value
+   ) %>% 
+  select(-"NA")
+  
+numeric_table_tempseq_figure_reshaped_reduced
+```
+
+```{r tempseq sex per temporal_sequence_binomial prop for figure, include=FALSE}
+#sex grouped by temporal_sequence_binomial proportions per temporal_sequence_binomial group/level
+sex_per_temporal_sequence_binomial_prop_figure <- dat %>%
+  group_by(temporal_sequence_binomial) %>%
+  count(dem.sex, temporal_sequence_binomial) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = Prop*100
+  ) %>%
+  select(temporal_sequence_binomial, 
+         dem.sex, 
+         Value) %>% 
+  pivot_wider(names_from = temporal_sequence_binomial,
+              values_from = Value) %>% 
+  filter(dem.sex == "Female") %>% 
+  mutate(Variable = "Sex: Female") %>% 
+  select(-dem.sex)
+
+sex_per_temporal_sequence_binomial_prop_figure
+```
+
+```{r tempseq ethnicity per temporal_sequence_binomial prop for figure, include=FALSE}
+#ethnicity grouped by temporal_sequence_binomial proportions per temporal_sequence_binomial group/level
+ethnicity_per_temporal_sequence_binomial_prop_figure <- dat %>%
+  group_by(temporal_sequence_binomial) %>%
+  count(dem.ethnicity_collapsed, temporal_sequence_binomial) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = Prop*100
+  ) %>%
+  select(temporal_sequence_binomial, 
+         dem.ethnicity_collapsed, 
+         Value) %>% 
+  pivot_wider(names_from = temporal_sequence_binomial,
+              values_from = Value) %>% 
+  filter(dem.ethnicity_collapsed == "White") %>% 
+  mutate(Variable = "Ethnicity") %>% 
+  select(-dem.ethnicity_collapsed)
+
+ethnicity_per_temporal_sequence_binomial_prop_figure
+```
+
+```{r tempseq highest education per temporal_sequence_binomial prop for figure, include=FALSE}
+#highest education grouped by temporal_sequence_binomial proportions per temporal_sequence_binomial group/level
+highest_education_per_temporal_sequence_binomial_prop_figure <- dat %>%
+  group_by(temporal_sequence_binomial) %>%
+  count(dem.highest_education_ordered_collapsed, temporal_sequence_binomial) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = Prop*100
+  ) %>% 
+  select(temporal_sequence_binomial, 
+         dem.highest_education_ordered_collapsed, 
+         Value) %>% 
+  pivot_wider(names_from = temporal_sequence_binomial,
+              values_from = Value) %>% 
+  filter(dem.highest_education_ordered_collapsed == "College or university degree" |
+           dem.highest_education_ordered_collapsed == "A levels/AS levels or equivalent" |
+           dem.highest_education_ordered_collapsed == "O levels/GCSEs or equivalent" |
+           dem.highest_education_ordered_collapsed == "No qualifications") %>% 
+  mutate(Variable = case_when(
+    dem.highest_education_ordered_collapsed == "College or university degree" ~ "Highest education: University degree",
+    dem.highest_education_ordered_collapsed == "A levels/AS levels or equivalent" ~ "Highest education: A-levels",
+    dem.highest_education_ordered_collapsed == "O levels/GCSEs or equivalent" ~ "Highest education: GCSEs",
+    dem.highest_education_ordered_collapsed == "No qualifications"  ~ "Highest education: No qualifications"
+    )
+  ) %>% 
+  select(-dem.highest_education_ordered_collapsed)
+
+highest_education_per_temporal_sequence_binomial_prop_figure
+```
+
+```{r tempseq any childhood trauma per temporal_sequence_binomial prop for figure, include=FALSE}
+#child trauma (child maltreatment) grouped by temporal_sequence_binomial proportions per temporal_sequence_binomial group/level
+child_trauma_per_temporal_sequence_binomial_prop_figure <- dat %>%
+  group_by(temporal_sequence_binomial) %>%
+  count(cts.any_maltreatment_binary, temporal_sequence_binomial) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = Prop*100
+  ) %>% 
+  select(temporal_sequence_binomial, 
+         cts.any_maltreatment_binary, 
+         Value) %>% 
+  pivot_wider(names_from = temporal_sequence_binomial,
+              values_from = Value) %>% 
+  filter(cts.any_maltreatment_binary == "Childhood maltreatment") %>% 
+  mutate(Variable = case_when(
+    cts.any_maltreatment_binary == "Childhood maltreatment" ~ "Childhood trauma"
+    )
+  ) %>% 
+  select(-cts.any_maltreatment_binary)
+
+child_trauma_per_temporal_sequence_binomial_prop_figure
+```
+
+```{r tempseq any adult trauma per temporal_sequence_binomial prop for figure, include=FALSE}
+#adult trauma (partner abuse) grouped by temporal_sequence_binomial proportions per temporal_sequence_binomial group/level
+adult_trauma_per_temporal_sequence_binomial_prop_figure <- dat %>%
+  group_by(temporal_sequence_binomial) %>%
+  count(ats.partner_abuse_binary, temporal_sequence_binomial) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = Prop*100
+  ) %>% 
+  select(temporal_sequence_binomial, 
+         ats.partner_abuse_binary, 
+         Value) %>% 
+  pivot_wider(names_from = temporal_sequence_binomial,
+              values_from = Value) %>% 
+  filter(ats.partner_abuse_binary == "Partner abuse") %>% 
+  mutate(Variable = case_when(
+    ats.partner_abuse_binary == "Partner abuse" ~ "Adult trauma"
+    )
+  ) %>% 
+  select(-ats.partner_abuse_binary)
+
+adult_trauma_per_temporal_sequence_binomial_prop_figure
+```
+
+```{r tempseq any catastrophic trauma per temporal_sequence_binomial prop for figure, include=FALSE}
+#catastrophic trauma (partner abuse) grouped by temporal_sequence_binomial proportions per temporal_sequence_binomial group/level
+catastrophic_trauma_per_temporal_sequence_binomial_prop_figure <- dat %>%
+  group_by(temporal_sequence_binomial) %>%
+  count(ats.catastrophic_trauma_binary, temporal_sequence_binomial) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = Prop*100
+  ) %>% 
+  select(temporal_sequence_binomial, 
+         ats.catastrophic_trauma_binary, 
+         Value) %>% 
+  pivot_wider(names_from = temporal_sequence_binomial,
+              values_from = Value) %>% 
+  filter(ats.catastrophic_trauma_binary == "Catastrophic trauma") %>% 
+  mutate(Variable = "Catastrophic trauma") %>% 
+  select(-ats.catastrophic_trauma_binary)
+
+catastrophic_trauma_per_temporal_sequence_binomial_prop_figure
+```
+
+```{r tempseq family history anx/dep per temporal_sequence_binomial prop for figure, include=FALSE}
+#family history anx/dep grouped by temporal_sequence_binomial proportions per temporal_sequence_binomial group/level
+mhfh_anx_dep_per_temporal_sequence_binomial_prop_figure <- dat %>%
+  group_by(temporal_sequence_binomial) %>%
+  count(mhfh.anxiety_or_depression, temporal_sequence_binomial) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = Prop*100
+  ) %>%
+  select(temporal_sequence_binomial, 
+         mhfh.anxiety_or_depression, 
+         Value) %>% 
+  pivot_wider(names_from = temporal_sequence_binomial,
+              values_from = Value) %>% 
+  filter(mhfh.anxiety_or_depression == "Positive family history") %>% 
+  mutate(Variable = "Family history: Anxiety/depressive disorder") %>% 
+  select(-mhfh.anxiety_or_depression)
+
+mhfh_anx_dep_per_temporal_sequence_binomial_prop_figure
+```
+
+```{r tempseq family history other per temporal_sequence_binomial prop for figure, include=FALSE}
+#family history other grouped by temporal_sequence_binomial proportions per temporal_sequence_binomial group/level
+mhfh_other_per_temporal_sequence_binomial_prop_figure <- dat %>%
+  group_by(temporal_sequence_binomial) %>%
+  count(mhfh.other_disorders, temporal_sequence_binomial) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = Prop*100
+  ) %>% 
+  select(temporal_sequence_binomial, 
+         mhfh.other_disorders, 
+         Value) %>% 
+  pivot_wider(names_from = temporal_sequence_binomial,
+              values_from = Value) %>% 
+  filter(mhfh.other_disorders == "Positive family history") %>% 
+  mutate(Variable = "Family history: Other mental health disorder") %>% 
+  select(-mhfh.other_disorders)
+
+mhfh_other_per_temporal_sequence_binomial_prop_figure
+```
+
+```{r tempseq self-reported anx/dep per temporal_sequence_binomial prop for figure, include=FALSE}
+#self-reported anx/dep grouped by temporal_sequence_binomial proportions per temporal_sequence_binomial group/level
+mhd_anx_dep_per_temporal_sequence_binomial_prop_figure <- dat %>%
+  group_by(temporal_sequence_binomial) %>%
+  count(mhd.anxiety_depression, temporal_sequence_binomial) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = Prop*100
+  ) %>% 
+  select(temporal_sequence_binomial, 
+         mhd.anxiety_depression, 
+         Value) %>% 
+  pivot_wider(names_from = temporal_sequence_binomial,
+              values_from = Value) %>% 
+  filter(mhd.anxiety_depression == "Diagnosis") %>% 
+  mutate(Variable = "Self-reported anxiety/depressive disorder") %>% 
+  select(-mhd.anxiety_depression)
+
+mhd_anx_dep_per_temporal_sequence_binomial_prop_figure
+```
+
+```{r tempseq self-reported other diag per temporal_sequence_binomial prop for figure for figure, include=FALSE}
+#self-reported other diag grouped by temporal_sequence_binomial proportions per temporal_sequence_binomial group/level
+mhd_other_per_temporal_sequence_binomial_prop_figure <- dat %>%
+  group_by(temporal_sequence_binomial) %>%
+  count(mhd.other_diagnoses, temporal_sequence_binomial) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = Prop*100
+  ) %>%
+  select(temporal_sequence_binomial, 
+         mhd.other_diagnoses, 
+         Value) %>% 
+  pivot_wider(names_from = temporal_sequence_binomial,
+              values_from = Value) %>% 
+  filter(mhd.other_diagnoses == "Diagnosis") %>% 
+  mutate(Variable = "Self-reported other mental health disorder") %>% 
+  select(-mhd.other_diagnoses)
+
+mhd_other_per_temporal_sequence_binomial_prop_figure
+```
+
+```{r tempseq combined categorical table for figure, include=FALSE}
+categorical_table_tempseq_figure <- sex_per_temporal_sequence_binomial_prop_figure %>% 
+  rbind(ethnicity_per_temporal_sequence_binomial_prop_figure,
+        highest_education_per_temporal_sequence_binomial_prop_figure,
+        child_trauma_per_temporal_sequence_binomial_prop_figure,
+        adult_trauma_per_temporal_sequence_binomial_prop_figure,
+        catastrophic_trauma_per_temporal_sequence_binomial_prop_figure,
+        mhfh_anx_dep_per_temporal_sequence_binomial_prop_figure,
+        mhfh_other_per_temporal_sequence_binomial_prop_figure,
+        mhd_anx_dep_per_temporal_sequence_binomial_prop_figure,
+        mhd_other_per_temporal_sequence_binomial_prop_figure) %>% 
+  select(Variable, `Anxiety-first`, `MDD-first`)
+
+categorical_table_tempseq_figure
+```
+
+```{r tempseq combine continuous/categorical variable descriptives tables for figures, include=FALSE}
+#Merge descriptive tables
+descriptives_figure_table_tempseq_wide <- rbind(numeric_table_tempseq_figure_reshaped_reduced,
+                                   categorical_table_tempseq_figure) %>% 
+  select(Variable, `Anxiety-first`, `MDD-first`) %>% 
+  mutate("Variable" = fct_relevel(
+      .f = Variable,
+      Variable_ordered_figure
+      )
+  ) %>% 
+  arrange(Variable)
+
+descriptives_figure_table_tempseq_wide
+```
+
+```{r tempseq format combined descriptives table for figures}
+descriptives_figure_table_tempseq <- descriptives_figure_table_tempseq_wide %>%
+  add_column(blank = NA) %>% 
+  pivot_longer(
+    -Variable,
+    names_to = "comorbidity",
+    values_to = "value"
+  ) %>% 
+  mutate(comorbidity = 
+           fct_relevel(
+             .f = comorbidity,
+             "Anxiety-first",
+             "MDD-first"
+           )
+         )
+
+descriptives_figure_table_tempseq
+```
+, #Yellow
+  "#fef1ba", #Light yellow
+  "#b7dee8", #Light blue
+  "#009fb7" #Turquoise
+#### Year variables
+```{r tempseq descriptives year variables barchart vertical bars}
+bar_descriptives_years_vertical_tempseq <- 
+  descriptives_figure_table_tempseq %>% 
+  filter(
+    Variable == "Age" | 
+      Variable == "Age of onset" | 
+      Variable == "Recurrence" 
+  ) %>%
+  ggplot(aes(y = value, 
+             x = Variable, 
+             fill = comorbidity)
+         ) + 
+  geom_bar(
+    stat = "identity", 
+    position = position_dodge(),
+    width = 1.2
+    #fill = GLADpalette #Not working for some reason
+    ) +
+  scale_fill_manual(breaks = c("Anxiety-first","MDD-first"),
+                    values = c("#efc00b","#b7dee8", "#000000")) +
+  geom_text( 
+    aes(
+      label = format(round(value,1), nsmall=1)
+      ),
+    size = 1.7, 
+    position = position_dodge(width = 1.2),
+    hjust = 0.6,
+    vjust = -0.3
+    ) + #Add % labels on top of bars
+  labs(
+    y = "Years/Number of episodes (mean)",
+    fill = element_blank()) + #Remove legend title
+  theme(
+    text = element_text(color = "black",
+                        size = 8),
+    axis.text = element_text(color = "black",
+                             margin = 0),
+    #axis.ticks.x.margin = unit(0, "cm"),
+    axis.title.x = element_blank(),
+    axis.ticks = element_blank(),
+    legend.background = element_blank(),
+    legend.box.background = element_blank(),
+    legend.position = "bottom",
+    plot.margin = margin(0, 20, 0, 5),
+    panel.background = element_blank(), 
+    panel.grid.minor = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(
+      colour = "grey",
+      linetype = "dashed",
+      size = 0.2
+      )
+    )
+
+bar_descriptives_years_vertical_tempseq
+```
+
+#### Symptom score variables
+```{r tempseq descriptives symptoms variables barchart vertical bars}
+bar_descriptives_symptoms_vertical_tempseq <- 
+  descriptives_figure_table_tempseq %>% 
+  filter(
+    Variable == "Current anxiety symtoms" | 
+      Variable == "Current depressive symtoms" 
+  ) %>%
+  mutate(
+    Variable = fct_recode(
+      .f = Variable,
+      "Current\nanxiety symtoms" = "Current anxiety symtoms",
+      "Current\ndepressive symtoms" = "Current depressive symtoms"
+     )
+    ) %>% 
+  ggplot(aes(y = value, 
+             x = Variable, 
+             fill = comorbidity)
+         ) + 
+  geom_bar(
+    stat = "identity", 
+    position = position_dodge(),
+    width = 1.2
+    #fill = GLADpalette #Not working for some reason
+    ) +
+  scale_fill_manual(breaks = c("Anxiety-first","MDD-first"),
+                    values = c("#efc00b","#b7dee8", "#000000")) +
+  geom_text( 
+    aes(
+      label = format(round(value,1), nsmall=1)
+      ),
+    size = 1.7, 
+    position = position_dodge(width = 1.2),
+    hjust = 0.6,
+    vjust = -0.3
+    ) + #Add % labels on top of bars
+  labs(
+    y = "Symptom scores (mean)",
+    fill = element_blank()) + #Remove legend title
+  theme(
+    text = element_text(color = "black",
+                        size = 8),
+    axis.text = element_text(color = "black",
+                             margin = 0),
+    #axis.ticks.x.margin = unit(0, "cm"),
+    axis.title.x = element_blank(),
+    axis.ticks = element_blank(),
+    legend.background = element_blank(),
+    legend.box.background = element_blank(),
+    legend.position = "bottom",
+    plot.margin = margin(0, 20, 0, 5),
+    panel.background = element_blank(), 
+    panel.grid.minor = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(
+      colour = "grey",
+      linetype = "dashed",
+      size = 0.2
+      )
+    )
+
+bar_descriptives_symptoms_vertical_tempseq
+```
+
+#### Trauma variables
+```{r tempseq descriptives trauma variables barchart vertical bars}
+bar_descriptives_trauma_vertical_tempseq <- 
+  descriptives_figure_table_tempseq %>% 
+  filter(
+    Variable == "Childhood trauma" | 
+      Variable == "Adult trauma" | 
+      Variable == "Catastrophic trauma"
+  ) %>%
+  ggplot(aes(y = value/100, 
+             x = Variable, 
+             fill = comorbidity)
+         ) + 
+  geom_bar(
+    stat = "identity", 
+    position = position_dodge(),
+    width = 1.2
+    #fill = GLADpalette #Not working for some reason
+    ) +
+  scale_fill_manual(breaks = c("Anxiety-first","MDD-first"),
+                    values = c("#efc00b","#b7dee8", "#000000")) +
+  geom_text( 
+    aes(
+      label = ifelse(value > 1, scales::percent(value/100,accuracy=1), 
+                     scales::percent(value/100,accuracy=0.1)
+                     )
+      ),
+    size = 1.7, 
+    position = position_dodge(width = 1.2),
+    hjust = 0.4,
+    vjust = -0.3
+    ) + #Add % labels on top of bars
+  labs(
+    y = "Percent of sample",
+    fill = element_blank()) + #Remove legend title
+  #coord_flip() + #Flip x and y axis
+  theme(
+    text = element_text(color = "black",
+                        size = 8),
+    axis.text = element_text(color = "black",
+                             margin = 0),
+    #axis.ticks.x.margin = unit(0, "cm"),
+    axis.title.x = element_blank(),
+    axis.ticks = element_blank(),
+    legend.background = element_blank(),
+    legend.box.background = element_blank(),
+    legend.position = "bottom",
+    plot.margin = margin(5, 20, 1, 5),
+    panel.background = element_blank(), 
+    panel.grid.minor = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(
+      colour = "grey",
+      linetype = "dashed",
+      size = 0.2
+      )
+    ) +
+  scale_y_continuous(limits = c(0, 1), #Y-axis goes from 0-1
+                     breaks=seq(0,1, 0.1), #Y-axis goes from 0 - 1, with tick marks every 0.1
+                     labels = scales::percent_format(accuracy = 5L), #Makes y-axis % and removes decimals
+                     expand = c(0,0))
+
+bar_descriptives_trauma_vertical_tempseq
+```
+
+#### Categorical variables (percentages)
+
+```{r tempseq descriptives percents barchart vertical bars}
+bar_descriptives_percents_vertical_tempseq <- 
+  descriptives_figure_table_tempseq %>% 
+  filter(
+    Variable == "Sex: Female" | 
+      Variable == "Ethnicity" | 
+      Variable == "Highest education: University degree" |
+      Variable == "Highest education: A-levels" |
+      Variable == "Highest education: GCSEs" |
+      Variable == "Highest education: No qualifications" |
+      #Variable == "Family history: Anxiety/depressive disorder" |
+      #Variable == "Family history: Other mental health disorder" |
+      Variable == "Self-reported anxiety/depressive disorder" |
+      Variable == "Self-reported other mental health disorder"
+  ) %>% 
+  mutate(
+    Variable = fct_recode(
+      .f = Variable,
+      "Sex:\nFemale" = "Sex: Female",
+      "Ethnicity:\nWhite" = "Ethnicity",
+      "Highest education:\nUniversity degree" = "Highest education: University degree",
+      "Highest education:\nA-levels" = "Highest education: A-levels",
+      "Highest education:\nGCSEs" = "Highest education: GCSEs",
+      "Highest education:\nNo qualifications" = "Highest education: No qualifications",
+      #"Family history:\nAnxiety/depressive\ndisorder" = "Family history: Anxiety/depressive disorder",
+      #"Family history:\nOther\nmental health disorder" = "Family history: Other mental health disorder",
+      "Self-reported\nanxiety/depressive\ndisorder" = "Self-reported anxiety/depressive disorder",
+      "Self-reported\nother\nmental health disorder" = "Self-reported other mental health disorder"
+    )
+  ) %>% 
+  ggplot(aes(y = value/100, 
+             x = Variable, 
+             fill = comorbidity)
+         ) + 
+  geom_bar(
+    stat = "identity", 
+    position = position_dodge(),
+    width = 1.2
+    #fill = GLADpalette #Not working for some reason
+    ) +
+  scale_fill_manual(breaks = c("Anxiety-first","MDD-first"),
+                    values = c("#efc00b","#b7dee8", "#000000")) +
+  geom_text( 
+    aes(
+      label = ifelse(value > 1, scales::percent(value/100,accuracy=1), 
+                     scales::percent(value/100,accuracy=0.1)
+                     )
+      ),
+    size = 1.7, 
+    position = position_dodge(width = 1.2),
+    hjust = 0.4,
+    vjust = -0.3
+    ) + #Add % labels on top of bars
+  labs(
+    y = "Percent of sample",
+    fill = element_blank()) + #Remove legend title
+  #coord_flip() + #Flip x and y axis
+  theme(
+    text = element_text(color = "black",
+                        size = 8),
+    axis.text = element_text(color = "black",
+                             margin = 0),
+    #axis.ticks.x.margin = unit(0, "cm"),
+    axis.title.x = element_blank(),
+    axis.ticks = element_blank(),
+    legend.background = element_blank(),
+    legend.box.background = element_blank(),
+    legend.position = "bottom",
+    plot.margin = margin(5, 20, 1, 5),
+    panel.background = element_blank(), 
+    panel.grid.minor = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(
+      colour = "grey",
+      linetype = "dashed",
+      size = 0.2
+      )
+    ) +
+  scale_y_continuous(limits = c(0, 1), #Y-axis goes from 0-1
+                     breaks=seq(0,1, 0.1), #Y-axis goes from 0 - 1, with tick marks every 0.1
+                     labels = scales::percent_format(accuracy = 5L), #Makes y-axis % and removes decimals
+                     expand = c(0,0))
+
+bar_descriptives_percents_vertical_tempseq
+```
+
+#### Combined: All main analysis descriptives
+
+```{r tempseq patch all descriptives barcharts}
+bar_descriptives_all_vertical_tempseq <- ((bar_descriptives_years_vertical_tempseq + theme(legend.position = "none")) |
+                           (bar_descriptives_trauma_vertical_tempseq + theme(legend.position = "none")) | 
+                             (bar_descriptives_symptoms_vertical_tempseq + theme(legend.position = "none"))) /
+  (bar_descriptives_percents_vertical_tempseq + theme(legend.position = "bottom"))  +
+  plot_layout(heights = c(2,1.5)) + 
+  plot_annotation(tag_levels = "A") 
+
+bar_descriptives_all_vertical_tempseq
+```
+
+```{r tempseq save all descriptives vertical barchart horizontal}
+#grDevices::dev.set(1)
+
+#Save jpeg of barchart
+ggsave(paste0("barchart_descriptives_all_vertical_tempseq_", Sys.Date(), ".jpeg"),
+       path = figure_path,
+       plot = bar_descriptives_all_vertical_tempseq,
+       width = 10,
+       height = 6,
+       dpi = 150,
+       units = "in")
+
+#Save tiff of barchart
+ggsave(paste0("barchart_descriptives_all_vertical_tempseq_", Sys.Date(), ".tiff"),
+      path = figure_path,
+      plot = bar_descriptives_all_vertical_tempseq,
+      width = 10,
+      height = 6,
+      dpi = 150,
+      units = "in")
+```
+
+## Analysis 2a variables
+
+Family history only - all others will be same as main analysis.
+
+### Table
+```{r tempseq descriptives table for analysis 2a, echo=FALSE}
+descriptives.table.all_analysis_2a <- descriptives %>%
+  filter(
+    str_detect(Variable, 'Family history')
+    ) 
+
+#descriptives.table.all_analysis_2a
+kable(descriptives.table.all_analysis_2a)
+```
+
+### Figure
+
+```{r tempseq family history descriptives barchart vertical bars}
+bar_descriptives_mhfh_vertical_tempseq <- 
+  descriptives_figure_table_tempseq %>% 
+  filter(
+    Variable == "Family history: Anxiety/depressive disorder" |
+      Variable == "Family history: Other mental health disorder"
+  ) %>% 
+  mutate(
+    Variable = fct_recode(
+      .f = Variable,
+      "Family history:\nAnxiety/depressive\ndisorder" = "Family history: Anxiety/depressive disorder",
+      "Family history:\nOther\nmental health disorder" = "Family history: Other mental health disorder"
+    )
+  ) %>% 
+  ggplot(aes(y = value/100, 
+             x = Variable, 
+             fill = comorbidity)
+         ) + 
+  geom_bar(
+    stat = "identity", 
+    position = position_dodge(),
+    width = 1.2
+    #fill = GLADpalette #Not working for some reason
+    ) +
+  scale_fill_manual(breaks = c("Anxiety-first","MDD-first"),
+                    values = c("#efc00b","#b7dee8", "#000000")) +
+  geom_text( 
+    aes(
+      label = ifelse(value > 1, scales::percent(value/100,accuracy=1), 
+                     scales::percent(value/100,accuracy=0.1)
+                     )
+      ),
+    size = 3, 
+    position = position_dodge(width = 1.2),
+    hjust = 0.4,
+    vjust = -0.3
+    ) + #Add % labels on top of bars
+  labs(
+    y = "Percent of sample",
+    fill = element_blank()) + #Remove legend title
+  #coord_flip() + #Flip x and y axis
+  theme(
+    text = element_text(color = "black",
+                        size = 11),
+    axis.text = element_text(color = "black",
+                             margin = 0),
+    #axis.ticks.x.margin = unit(0, "cm"),
+    axis.title.x = element_blank(),
+    axis.ticks = element_blank(),
+    legend.background = element_blank(),
+    legend.box.background = element_blank(),
+    legend.position = "bottom",
+    plot.margin = margin(5, 20, 1, 5),
+    panel.background = element_blank(), 
+    panel.grid.minor = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(
+      colour = "grey",
+      linetype = "dashed",
+      size = 0.2
+      )
+    ) +
+  scale_y_continuous(limits = c(0, 1), #Y-axis goes from 0-1
+                     breaks=seq(0,1, 0.1), #Y-axis goes from 0 - 1, with tick marks every 0.1
+                     labels = scales::percent_format(accuracy = 5L), #Makes y-axis % and removes decimals
+                     expand = c(0,0))
+
+bar_descriptives_mhfh_vertical_tempseq
+```
+
+```{r tempseq save family history descriptives barchart vertical}
+#grDevices::dev.set(1)
+
+# #Save jpeg of barchart
+ggsave(paste0("barchart_descriptives_mhfh_vertical_tempseq_", Sys.Date(), ".jpeg"),
+       path = figure_path,
+       plot = bar_descriptives_mhfh_vertical_tempseq,
+       width = 5,
+       height = 3.5,
+       dpi = 150,
+       units = "in")
+
+#Save tiff of barchart
+#ggsave(paste0("barchart_descriptives_mhfh_vertical_tempseq_", Sys.Date(), ".tiff"),
+#       path = figure_path,
+#       plot = bar_descriptives_mhfh_vertical_tempseq,
+#       width = 6,
+#       height = 5.5,
+#       dpi = 150,
+#       units = "in")
+```
+
+## Analysis 2b variables
+
+PRS only - all others will be same as main analysis.
+
+### Table
+
+```{r tempseq descriptives table for analysis 2b, echo=FALSE}
+descriptives.table.all_analysis_2b <- descriptives %>%
+  filter(
+    str_detect(Variable, 'PRS')
+    ) 
+
+#descriptives.table.all_analysis_2a
+kable(descriptives.table.all_analysis_2b)
+```
+
+### Figure
+
+```{r tempseq PRS descriptives barchart vertical bars}
+bar_descriptives_prs_vertical_tempseq <- 
+  descriptives_figure_table_tempseq %>% 
+  filter(
+    Variable == "Anxiety PRS" |
+      Variable == "MDD PRS" |
+      Variable == "Neuroticism PRS" |
+      Variable == "ADHD PRS" |
+      Variable == "Autism PRS" |
+      Variable == "Schizophrenia PRS" |
+      Variable == "Educational attainment PRS" 
+  ) %>% 
+  ggplot(aes(y = value, 
+             x = Variable, 
+             fill = comorbidity)
+         ) + 
+  geom_bar(
+    stat = "identity", 
+    position = position_dodge(),
+    width = 1.2
+    #fill = GLADpalette #Not working for some reason
+    ) +
+  scale_fill_manual(breaks = c("Anxiety-first","MDD-first"),
+                    values = c("#efc00b","#b7dee8", "#000000")) +
+  geom_text( 
+    aes(
+      label = round(value, 2)
+      ),
+    size = 1.7, 
+    position = position_dodge(width = 1.2),
+    hjust = 0.4,
+    vjust = -0.3
+    ) + #Add % labels on top of bars
+  labs(
+    y = "PRS",
+    fill = element_blank()) + #Remove legend title
+  #coord_flip() + #Flip x and y axis
+  theme(
+    text = element_text(color = "black",
+                        size = 8),
+    axis.text = element_text(color = "black",
+                             margin = 0),
+    #axis.ticks.x.margin = unit(0, "cm"),
+    axis.title.x = element_blank(),
+    axis.ticks = element_blank(),
+    legend.background = element_blank(),
+    legend.box.background = element_blank(),
+    legend.position = "bottom",
+    plot.margin = margin(5, 20, 1, 5),
+    panel.background = element_blank(), 
+    panel.grid.minor = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(
+      colour = "grey",
+      linetype = "dashed",
+      size = 0.2
+      )
+    ) 
+
+bar_descriptives_prs_vertical_tempseq
+```
+
+```{r tempseq save PRS descriptives barchart vertical}
+#grDevices::dev.set(1)
+
+# #Save jpeg of barchart
+ggsave(paste0("barchart_descriptives_prs_vertical_tempseq_", Sys.Date(), ".jpeg"),
+       path = figure_path,
+       plot = bar_descriptives_prs_vertical_tempseq,
+       width = 8,
+       height = 5.5,
+       dpi = 150,
+       units = "in")
+
+#Save tiff of barchart
+#ggsave(paste0("barchart_descriptives_prs_vertical_tempseq_", Sys.Date(), ".tiff"),
+#       path = figure_path,
+#       plot = bar_descriptives_prs_vertical_tempseq,
+#       width = 6,
+#       height = 5.5,
+#       dpi = 150,
+#       units = "in")
+```
+
+# Frequencies of anx/dep diagnoses by comorbidity group
+
+```{r GAD (CIDIA) per all_anxiety_depression prop, include=FALSE}
+
+cidia_per_all_anxiety_depression <- dat %>%
+  group_by(all_anxiety_depression) %>%
+  count(cidia.diagnosis, all_anxiety_depression) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = Prop*100
+  ) %>%
+  select(all_anxiety_depression, 
+         cidia.diagnosis, 
+         Value) %>% 
+  pivot_wider(names_from = all_anxiety_depression,
+              values_from = Value) %>% 
+  filter(cidia.diagnosis == "GAD diagnosis") %>% 
+  mutate(Variable = "GAD") %>% 
+  select(-cidia.diagnosis)
+
+cidia_per_all_anxiety_depression
+```
+
+```{r specific phobia (SPEC) per all_anxiety_depression prop, include=FALSE}
+
+spec_per_all_anxiety_depression <- dat %>%
+  group_by(all_anxiety_depression) %>%
+  count(spec.diagnosis, all_anxiety_depression) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = Prop*100
+  ) %>%
+  select(all_anxiety_depression, 
+         spec.diagnosis, 
+         Value) %>% 
+  pivot_wider(names_from = all_anxiety_depression,
+              values_from = Value) %>% 
+  filter(spec.diagnosis == "Any specific phobia") %>% 
+  mutate(Variable = "Specific phobia") %>% 
+  select(-spec.diagnosis)
+
+spec_per_all_anxiety_depression
+```
+
+```{r social phobia (SOCP) per all_anxiety_depression prop, include=FALSE}
+
+socp_per_all_anxiety_depression <- dat %>%
+  group_by(all_anxiety_depression) %>%
+  count(socp.diagnosis, all_anxiety_depression) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = Prop*100
+  ) %>%
+  select(all_anxiety_depression, 
+         socp.diagnosis, 
+         Value) %>% 
+  pivot_wider(names_from = all_anxiety_depression,
+              values_from = Value) %>% 
+  filter(socp.diagnosis == "Social phobia") %>% 
+  mutate(Variable = "Social anxiety disorder") %>% 
+  select(-socp.diagnosis)
+
+socp_per_all_anxiety_depression
+```
+
+```{r panic disorder (PAD) per all_anxiety_depression prop, include=FALSE}
+
+pad_per_all_anxiety_depression <- dat %>%
+  group_by(all_anxiety_depression) %>%
+  count(pad.diagnosis, all_anxiety_depression) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = Prop*100
+  ) %>%
+  select(all_anxiety_depression, 
+         pad.diagnosis, 
+         Value) %>% 
+  pivot_wider(names_from = all_anxiety_depression,
+              values_from = Value) %>% 
+  filter(pad.diagnosis == "Panic disorder") %>% 
+  mutate(Variable = "Panic disorder") %>% 
+  select(-pad.diagnosis)
+
+pad_per_all_anxiety_depression
+```
+
+```{r agoraphobia (AGP) per all_anxiety_depression prop, include=FALSE}
+
+agp_per_all_anxiety_depression <- dat %>%
+  group_by(all_anxiety_depression) %>%
+  count(agp.diagnosis, all_anxiety_depression) %>%
+  drop_na() %>%
+  mutate(Prop = round(n/sum(n), 3)) %>% 
+  mutate(
+    Value = Prop*100
+  ) %>%
+  select(all_anxiety_depression, 
+         agp.diagnosis, 
+         Value) %>% 
+  pivot_wider(names_from = all_anxiety_depression,
+              values_from = Value) %>% 
+  filter(agp.diagnosis == "Agoraphobia") %>% 
+  mutate(Variable = "Agoraphobia") %>% 
+  select(-agp.diagnosis)
+
+agp_per_all_anxiety_depression
+```
+
+```{r combine diagnosis descriptives tables per all_anxiety_depression, include=FALSE}
+#Merge descriptive tables
+diagnosis_descriptives_table_wide <- rbind(cidia_per_all_anxiety_depression,
+                                        spec_per_all_anxiety_depression,
+                                        socp_per_all_anxiety_depression,
+                                        pad_per_all_anxiety_depression,
+                                        agp_per_all_anxiety_depression) %>% 
+  select(Variable, `Single anxiety`, `Anxiety-anxiety`, `Anxiety-MDD`) 
+
+diagnosis_descriptives_table_wide
+```
+
+```{r format combined descriptives table for figures}
+diagnosis_descriptives_table <- diagnosis_descriptives_table_wide %>%
+  pivot_longer(
+    -Variable,
+    names_to = "comorbidity",
+    values_to = "value"
+  ) %>% 
+  mutate(comorbidity = 
+           fct_relevel(
+             .f = comorbidity,
+             "Single anxiety",
+             "Anxiety-anxiety",
+             "Anxiety-MDD"
+           )
+         ) %>% 
+  mutate(value = scales::percent(value/100,accuracy=0.1)) %>% 
+  pivot_wider(names_from = Variable,
+              values_from = value) %>% 
+  rename(`Comorbidity group` = comorbidity)
+
+kable(diagnosis_descriptives_table)
+```
+
+```{r save filtered dataset}
+saveRDS(object = dat, file = paste0(cleaned_path, "anxcmbd_final_dataset_fixed_211022.rds"))
+```

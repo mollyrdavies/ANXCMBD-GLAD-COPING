@@ -1,0 +1,4771 @@
+---
+title: "ANXCMBD_primary_analyses"
+author: "Molly R. Davies"
+date: "10/03/2022"
+output:
+  html_document:
+    code_folding: hide
+    df_print: paged
+    highlight: monochrome
+    number_sections: no
+    theme: readable
+    toc: yes
+    toc_float:
+      collapsed: yes
+  pdf_document:
+    toc: yes
+  word_document:
+    toc: yes
+editor_options:
+  chunk_output_type: inline
+---
+**NOTE NEED TO FIX SAMPLE SIZE TABLES (currently the comorbidity groups are ordered incorrectly, with anxiety-MDD vs single anxiety comparison on top)**
+
+
+This script was utilised to run the primary analyses for the paper "Factors associated with anxiety disorder comorbidity" (Davies et al, 2022). https://doi.org/10.1016/j.jad.2022.11.051
+
+The paper has been pre-registered at: https://osf.io/ksrf2
+
+These analyses involve comparisons between anxiety/depressive comorbidity groups.    
+There are 3 stages to the primary analyses:  
+1. Main analyses: Datapoints collected on all participants  
+2a. Family history analyses: All variables in main analysis + self-reported family history of mental health disorders variables
+2b. Genetic analyses: All variables in main analysis + PRS for relevant traits/disorders  
+
+Initially, models included a chronicity variable which was removed due to multicollinearity issues. 
+
+Script written by M. R. Davies.
+Email:  molly.davies@kcl.ac.uk
+
+All scripts for the paper can be accessed at:
+https://github.com/mollyrdavies/ANXCMBD-GLAD-COPING
+
+# Setup
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      comment=NA,
+                      prompt=FALSE,
+                      cache=FALSE)
+```
+
+Delete everything in your global environment
+```{r Clear global environment, include=FALSE}
+remove(list = ls())
+```
+
+Install packages
+```{r Install packages, include=FALSE}
+# Remember to hash the installing out
+#install.packages("knitr")
+#install.packages("skimr")
+#install.packages("psych")
+#install.packages("stats") #for regression models
+#install.packages("cowplot") #for forest plot
+#install.packages("corrplot") #for correlation matrix
+#install.packages("polycor") #for correlation matrix
+#install.packages("car") #for regression assumption diagnostics
+#install.packages("ggfortify") #diagnostic plots 
+#install.packages("broom") #for diagnostic values and tidy regression output
+#install.packages("yardstick")
+#install.packages("ggpubr") #for forest plot
+#install.packages("patchwork") #for combining descriptives figures
+#install.packages("tidyverse") #contains dplyr, ggplot2, lubridate, broom and other useful packages. Broom is useful here as it turns messy output of base R functions such as "lm" (for linear regression) into tidy data frames
+```
+
+Load Packages
+```{r Packages, include=FALSE}
+library(knitr)
+library(skimr)
+library(psych)
+library(stats)
+library(cowplot)
+library(corrplot)
+library(polycor)
+library(car)
+library(ggfortify)
+#library(summarytools)
+library(broom)
+library(yardstick)
+library(ggpubr)
+library(patchwork)
+library(tidyverse) 
+```
+
+```{r GLAD Colour Palette, include=FALSE}
+GLADpalette = c(
+  "#efc00b", #Yellow
+  "#fef1ba", #Light yellow
+  "#b7dee8", #Light blue
+  "#009fb7" #Turquoise
+  )
+```
+
+# Data import
+
+```{r source file paths, include=FALSE}
+source("../../../ANXCMBD_data_path.R")
+```
+
+```{r Read in data, include=FALSE}
+dat <- read_rds(paste0(cleaned_path, "anxcmbd_final_dataset_fixed_211022.rds"))
+```
+
+```{r visualise, include=FALSE}
+head(dat)
+```
+
+# Explanatory variable vectors
+
+```{r vector of sociodemographic variables, include=FALSE}
+sociodemographic_variables <- 
+  c(
+    "dem.age_adjusted",
+    "dem.sex", 
+    "dem.highest_education_ordered_collapsed", 
+    "dem.ethnicity_collapsed"
+   )
+sociodemographic_variables
+```
+
+```{r vector of sociodemographic variables and cohort, include=FALSE}
+sociodemographic_variables_cohort <- 
+  c(
+    "dem.age_adjusted",
+    "sample_factor",
+    "dem.sex", 
+    "dem.highest_education_ordered_collapsed", 
+    "dem.ethnicity_collapsed"
+   )
+sociodemographic_variables_cohort
+```
+
+Vector of vulnerability variables incuded in GLAD/COPING baseline (trauma only)
+Binary trauma variables
+Adult trauma variable only includes partner abuse variables
+Excludes family history and personality data
+```{r vector of vulnerability binary variables (trauma only), include=FALSE}
+trauma_variables <- 
+  c(
+    "cts.any_maltreatment_binary",
+    "ats.partner_abuse_binary",
+    "ats.catastrophic_trauma_binary"
+   )
+trauma_variables
+```
+
+```{r vector of family history variables, include=FALSE}
+family_history_variables <- 
+  c(
+    "mhfh.anxiety_or_depression_numeric", 
+    "mhfh.other_disorders_numeric"
+   )
+family_history_variables
+```
+
+```{r vector of clinical characteristics, include=FALSE}
+clinical_variables <- 
+  c(
+    "mhd.anxiety_depression_numeric",
+    "mhd.other_diagnoses_numeric",
+    "min_age_of_onset_adjusted",
+    "max_recurrence",
+    "phq9.sum_score",
+    "gad7.sum_score"
+  )
+clinical_variables
+```
+
+```{r vector of genetic variables, include=FALSE}
+genetic_variables <- 
+  c(
+    "anxietyPRS_z",
+    "depression05_PRS_z",
+    "neuroticismPRS_z",
+    "adhdPRS_z",
+    "autismPRS_z",
+    "schizophreniaPRS_z",
+    "educationPRS_z")
+genetic_variables
+```
+
+```{r vector of genetic variables with batch and pcs, include=FALSE}
+genetic_variables_batch_pcs <- 
+  c(
+    "anxietyPRS_z",
+    "depression05_PRS_z",
+    "neuroticismPRS_z",
+    "adhdPRS_z",
+    "autismPRS_z",
+    "schizophreniaPRS_z",
+    "educationPRS_z",
+    "batch_recoded",
+    "PC1",
+    "PC2",
+    "PC3",
+    "PC4",
+    "PC5",
+    "PC6",
+    "PC7",
+    "PC8",
+    "PC9",
+    "PC10"
+    )
+genetic_variables_batch_pcs
+```
+
+```{r all explanatory variables main analysis, include=FALSE}
+all_explanatory_variables_main_analysis <- 
+  c(
+    sociodemographic_variables,
+    trauma_variables,
+    clinical_variables
+    ) 
+
+all_explanatory_variables_main_analysis
+```
+
+```{r all explanatory variables analysis 2a, include=FALSE}
+all_explanatory_variables_analysis_2a <- 
+  c(
+    sociodemographic_variables,
+    trauma_variables,
+    clinical_variables,
+    family_history_variables
+    ) 
+
+all_explanatory_variables_analysis_2a
+```
+
+```{r all explanatory variables analysis 2b, include=FALSE}
+all_explanatory_variables_analysis_2b <- 
+  c(
+    sociodemographic_variables,
+    trauma_variables,
+    clinical_variables,
+    genetic_variables_batch_pcs
+    )
+all_explanatory_variables_analysis_2b
+```
+
+```{r all explanatory variables (for correlation matrix), include=FALSE}
+all_explanatory_variables <- 
+  c(
+    sociodemographic_variables,
+    trauma_variables,
+    clinical_variables,
+    family_history_variables,
+    genetic_variables
+    ) 
+
+all_explanatory_variables
+```
+
+```{r all variables vector for model results tables, include=FALSE}
+#Create vector to order factor for tables
+Variable_ordered_results <- c(
+  "Age",
+  "Female",
+  "University degree",
+  "A-levels or equivalent",
+  "GCSEs or equivalent",
+  "No qualifications",
+  "White",
+  "Childhood trauma",
+  "Adult trauma",
+  "Catastrophic trauma",
+  "Self-reported anxiety/depressive disorder diagnosis",
+  "Other self-reported mental health diagnosis",
+  "Age of onset",
+  "Recurrence",
+  "Current depressive symptoms (PHQ9)",
+  "Current anxiety symptoms (GAD7)",
+  "Family history: Anxiety/depressive disorder",
+  "Family history: Other mental health disorder",
+  "Anxiety PRS",
+  "MDD PRS",
+  "Neuroticism PRS",
+  "ADHD PRS",
+  "Autism PRS",
+  "Schizophrenia PRS",
+  "Educational attainment PRS",
+  "batch_recoded",
+  "GLAD genotyping batch set 1",
+  "GLAD genotyping batch set 2",
+  "GLAD genotyping batch set 3",
+  "COPING NBR batch set 1",
+  "COPING NBR batch set 2",
+  "COPING NBR batch set 3",
+  "PC1",
+  "PC2",
+  "PC3",
+  "PC4",
+  "PC5",
+  "PC6",
+  "PC7",
+  "PC8",
+  "PC9",
+  "PC10"
+  )
+```
+
+# Correlation plot function
+
+```{r correlation plot function}
+corr.mat.plot <- function(data_set, variables, name) {
+  assign("corr_dat", as.data.frame(data_set[,variables]))
+  invisible(assign("corr.mat", hetcor(
+    data = corr_dat, # Specify the data
+    use = "pairwise.complete.obs" # Use all pairwise observations
+    )
+  ))
+
+# Save the correlations from the correlation matrix in an object
+assign("corr.matrix", as.matrix(corr.mat))
+
+# Save the p values from the correlation matrix in an object
+assign("p.matrix", as.matrix(corr.mat$tests))
+
+#Rename correlation plot rows/columns
+assign("corr.matrix_names", c(
+  "Age",
+  "Sex",
+  "Highest education",
+  "Ethnicity",
+  "Childhood trauma",
+  "Adult trauma",
+  "Catastrophic trauma",
+  "Self-reported anxiety/depressive disorder diagnosis",
+  "Other self-reported mental health diagnosis",
+  "Age of onset",
+  "Recurrence",
+  "Current depressive symptoms (PHQ9)",
+  "Current anxiety symptoms (GAD7)",
+  "Family history: Anxiety/depressive disorder",
+  "Family history: Other mental health disorder",
+  "Anxiety PRS",
+  "MDD PRS",
+  "Neuroticism PRS",
+  "ADHD PRS",
+  "Autism PRS",
+  "Schizophrenia PRS",
+  "Educational attainment PRS"
+  )
+)
+
+invisible(rownames(corr.matrix) <- corr.matrix_names)
+invisible(colnames(corr.matrix) <- corr.matrix_names)
+invisible(rownames(p.matrix) <- corr.matrix_names)
+invisible(colnames(p.matrix) <- corr.matrix_names)
+
+#Plot the correlation matrix
+assign(paste0(name, "corr.plot"),
+       corrplot(corr.matrix, 
+                method = "color", # objects to represent the correlations on plot
+                type = "lower", # only use the lower triangle of the matrix
+                diag = FALSE, # do not show the correlations on the diagonal
+                addgrid.col = NA,
+                addCoef.col = "black", # colour for the correlation coefficients in the plot
+                tl.cex = 1,
+                tl.col = "black",
+                col=colorRampPalette(c("dodgerblue4","white","firebrick4"))(200), # colours for correlations
+                # Combine with significance
+                p.mat = p.matrix, # Matrix with p values
+                sig.level = 0.01, # Choose significant level
+                insig = "n" # "blank" = Nonsignificant correlations have no colour; "n" = nonsignificant correlations are the same as significant
+                )
+)
+
+return(get(paste0(name, "corr.plot")))
+}
+```
+
+# Correlation plot for full sample
+
+```{r create correlation plot for full dataset, fig.height=14, fig.width=12, echo=FALSE}
+corr.mat.plot(dat, all_explanatory_variables, "full_dataset")
+```
+
+```{r save full sample correlation plot, include=FALSE}
+# Initialize file path
+corr_file_path= paste0(figure_path, "/all_factors_correlation_plot_", Sys.Date(), ".jpeg")
+png(height=900, width=1000, file=corr_file_path, type = "cairo")
+
+# Your function to plot image goes here
+corr.mat.plot(dat, all_explanatory_variables, "full_dataset")
+
+# Close
+dev.off()
+
+```
+
+# Create data subsets
+Subsets of the dataset were used to run the regressions for each output. Chunks were hidden from RMarkdown output.
+The table of N participants included in each model is further down.
+
+## Outcome 1 dataset
+
+```{r subset outcome1: anxiety-anxiety (vs single anxiety), include=FALSE}
+dat_outcome1 <- dat %>% 
+  filter(!is.na(single_anxiety_vs_anxiety_anxiety_numeric))
+nrow(dat_outcome1)
+```
+
+## Outcome 2 dataset
+```{r subset outcome2: anxiety-MDD (vs single anxiety), include=FALSE}
+dat_outcome2 <- dat %>% 
+  filter(!is.na(single_anxiety_vs_anxiety_depression_numeric))
+nrow(dat_outcome2)
+```
+
+## Outcome3 dataset
+
+```{r subset outcome3: anxiety-anxiety (vs anxiety-MDD), include=FALSE}
+dat_outcome3 <- dat %>% 
+  filter(!is.na(anxiety_depression_vs_anxiety_anxiety_numeric))
+nrow(dat_outcome3)
+```
+
+## Outcome 4 dataset
+
+```{r subset outcome4: single_depression vs anxiety-MDD, include=FALSE}
+dat_outcome4 <- dat %>% 
+  filter(!is.na(single_depression_vs_anxiety_depression_numeric))
+nrow(dat_outcome4)
+```
+
+# Logistic regression functions
+Functions were created to run the logistic regression models. Chunks hidden from RMarkdown output.
+```{r logistic regression model function, include=FALSE}
+model.estimates <- function(outcome, variables, data_set) {
+  # define the variable name of the dependent variable
+  dependent.variable <- outcome
+  # define the independent variables
+  independent.variables <- variables
+  
+  # create the formula
+  glm.formula <- as.formula(paste(dependent.variable, paste(independent.variables, collapse=" + "), sep=" ~ "))
+  glm.formula
+  
+  # run the glm
+  assign(paste0(outcome, ".", variables, ".model"),
+         glm(formula = glm.formula,
+             data = get(data_set),
+             family = "binomial"
+         )
+  )
+  
+  assign(paste0(outcome, ".", variables, ".model_estimates"),
+         tidy(get(paste0(outcome, ".", variables, ".model")), conf.int = TRUE) %>%
+           mutate(
+             "Independent variable" = 
+               recode_factor(
+                 term,
+                "(Intercept)" = "Intercept",
+                "dem.age_adjusted" = "Age",
+                "sample_factor" = "Cohort",
+                "dem.sexFemale" = "Female",
+                "dem.highest_education_ordered_collapsedCollege or university degree" = "University degree",
+                "dem.highest_education_ordered_collapsedO levels/GCSEs or equivalent" = "GCSEs or equivalent",
+                "dem.highest_education_ordered_collapsedA levels/AS levels or equivalent" = "A-levels or equivalent",
+                "dem.highest_education_ordered_collapsedNo qualifications" = "No qualifications",
+                "dem.ethnicityMixed" = "Mixed or multiple ethnic origins",
+                "dem.ethnicityAsian or Asian British" = "Asian or Asian British",
+                "dem.ethnicityBlack or Black British" = "Black or Black British",
+                "dem.ethnicityArab" = "Arab",
+                "dem.ethnicityOther" = "Other ethnicity",
+                "dem.ethnicity_collapsedMinoritised ethnic group" = "Minoritised ethnic group",
+                "dem.ethnicity_collapsedWhite" = "White",
+                "mhfh.anxiety_or_depression_numeric" = "Family history: Anxiety/depressive disorder",
+                "mhfh.other_disorders_numeric" = "Family history: Other mental health disorder",
+                "cts.any_maltreatment_binaryChildhood maltreatment" = "Childhood trauma",
+                "ats.partner_abuse_binaryPartner abuse" = "Adult trauma",
+                "ats.catastrophic_trauma_binaryCatastrophic trauma" = "Catastrophic trauma",
+                "mhd.anxiety_depression_numeric" = "Self-reported anxiety/depressive disorder diagnosis",
+                "mhd.other_diagnoses_numeric" = "Other self-reported mental health diagnosis",
+                "min_age_of_onset_adjusted" = "Age of onset",
+                "max_recurrence" = "Recurrence",
+                "phq9.sum_score" = "Current depressive symptoms (PHQ9)",
+                "gad7.sum_score" = "Current anxiety symptoms (GAD7)",
+                "anxietyPRS_z" = "Anxiety PRS",
+                "depression05_PRS_z" = "MDD PRS",
+                "neuroticismPRS_z" = "Neuroticism PRS",
+                "adhdPRS_z" = "ADHD PRS",
+                "autismPRS_z" = "Autism PRS",
+                "schizophreniaPRS_z" = "Schizophrenia PRS",
+                "educationPRS_z" = "Educational attainment PRS",
+                "batch_recodedGLAD_b09" = "GLAD genotyping batch set 1",
+                "batch_recodedGLAD_b16_b17_merged" = "GLAD genotyping batch set 2",
+                "batch_recodedGLAD_b12" = "GLAD genotyping batch set 3",
+                "batch_recodedNBR_r2_v1_r3_v2_merged" = "COPING NBR batch set 1",
+                "batch_recodedNBR_r1_v1_merged" = "COPING NBR batch set 2",
+                "batch_recodedNBR_r1_v2_merged" = "COPING NBR batch set 3"
+             ),
+             "Estimate" = format(
+               round(estimate,
+                     digits = 2),
+               nsmall = 2),
+             "95% CI low" = format(
+               round(conf.low,
+                     digits = 2),
+               nsmall = 2, 
+               scientific = FALSE),
+             "95% CI up" = format(
+               round(conf.high,
+                     digits = 2),
+               nsmall = 2, 
+               scientific = FALSE),
+             "SE" = format(
+               round(std.error,
+                     digits = 2),
+               nsmall = 2),
+             "z score" = format(
+               round(statistic,
+                     digits = 2),
+               nsmall = 2),
+             "adjusted.p.value" = 
+               p.adjust(p.value, method = "fdr"),
+             "adjusted p value" = case_when(
+               adjusted.p.value < 0.001 ~ formatC(adjusted.p.value, format = "e", digits = 2),
+               adjusted.p.value >= 0.001 & adjusted.p.value < 0.01 ~ formatC(adjusted.p.value, format = "f", digits = 3),
+               adjusted.p.value >= 0.01 ~ formatC(adjusted.p.value, format = "f", digits = 2)
+               ),
+             "p value" = case_when(
+               p.value < 0.001 ~ formatC(p.value, format = "e", digits = 2),
+               p.value >= 0.001 & p.value < 0.01 ~ formatC(p.value, format = "f", digits = 3),
+               p.value >= 0.01 ~ formatC(p.value, format = "f", digits = 2)
+             )
+           ) %>%
+           select(
+             "Independent variable",
+             "Estimate",
+             "95% CI low",
+             "95% CI up",
+             "SE",
+             #    "z score",
+             "p value",
+             "adjusted.p.value",
+             "adjusted p value"
+           )  %>% 
+           mutate("Independent variable" = fct_relevel(
+             .f = `Independent variable`,
+             Variable_ordered_results
+             )
+          )
+  )
+  
+  return(get(paste0(outcome, ".", variables, ".model_estimates")))
+}
+
+model.vif <- function(outcome, variables, data_set) {
+  # define the variable name of the dependent variable
+  dependent.variable <- outcome
+  # define the independent variables
+  independent.variables <- variables
+  
+  # create the formula
+  glm.formula <- as.formula(paste(dependent.variable, paste(independent.variables, collapse=" + "), sep=" ~ "))
+  glm.formula
+  
+  # run the glm
+  assign(paste0(outcome, ".", variables, ".model"),
+         glm(formula = glm.formula,
+             data = get(data_set),
+             family = "binomial"
+         )
+  )
+  
+  assign("glm.vif.output", vif(get(paste0(outcome, ".", variables, ".model"))))
+  as.data.frame(as.table(glm.vif.output)) %>% 
+    pivot_wider(
+      names_from = Var2,
+      values_from = Freq
+      ) %>% 
+    select(Var1, GVIF) %>%
+    mutate(GVIF = 
+             round(GVIF,
+                     digits = 2)) %>% 
+    rename(
+      "Variable" = "Var1",
+      {{ outcome }} := "GVIF"
+      ) 
+}
+
+model.reg.stats <- function(outcome, variables, data_set) {
+  # define the variable name of the dependent variable
+  dependent.variable <- outcome
+  # define the independent variables
+  independent.variables <- variables
+  # create the formula
+  glm.formula <- as.formula(paste(dependent.variable, paste(independent.variables, collapse=" + "), sep=" ~ "))
+  glm.formula
+
+  # run the glm
+  assign(paste0(outcome, ".", variables, "_model"),
+         glm(formula = glm.formula,
+            data = get(data_set),
+            family = "binomial"
+         )
+  )
+
+  assign(
+    paste0(outcome, ".", variables, "_reg_stats"),
+    tidy(
+      get(paste0(outcome, ".", variables, "_model")),
+      exponentiate = T,
+      conf.int = T
+    ) %>%
+      mutate(
+        "Independent variable" = recode_factor(
+          term,
+          "(Intercept)" = "Intercept",
+          "dem.age_adjusted" = "Age",
+          "sample_factorGLAD" = "GLAD cohort",
+          "sample_factorNBR" = "NBR cohort",
+          "dem.sexFemale" = "Female",
+          "dem.highest_education_ordered_collapsedCollege or university degree" = "University degree",
+          "dem.highest_education_ordered_collapsedO levels/GCSEs or equivalent" = "GCSEs or equivalent",
+          "dem.highest_education_ordered_collapsedA levels/AS levels or equivalent" = "A-levels or equivalent",
+          "dem.highest_education_ordered_collapsedNo qualifications" = "No qualifications",
+          "dem.ethnicityAsian or Asian British" = "Asian or Asian British",
+          "dem.ethnicityBlack or Black British" = "Black or Black British",
+          "dem.ethnicityArab" = "Arab",
+          "dem.ethnicityOther" = "Other ethnicity",
+          "dem.ethnicity_collapsedMinoritised ethnic group" = "Minoritised ethnic group",
+          "dem.ethnicity_collapsedWhite" = "White",
+          "mhfh.anxiety_or_depression_numeric" = "Family history: Anxiety/depressive disorder",
+          "mhfh.other_disorders_numeric" = "Family history: Other mental health disorder",
+          "cts.any_maltreatment_binaryChildhood maltreatment" = "Childhood trauma",
+          "ats.partner_abuse_binaryPartner abuse" = "Adult trauma",
+          "ats.catastrophic_trauma_binaryCatastrophic trauma" = "Catastrophic trauma",
+          "mhd.anxiety_depression_numeric" = "Self-reported anxiety/depressive disorder diagnosis",
+          "mhd.other_diagnoses_numeric" = "Other self-reported mental health diagnosis",
+          "min_age_of_onset_adjusted" = "Age of onset",
+          "max_recurrence" = "Recurrence",
+          "phq9.sum_score" = "Current depressive symptoms (PHQ9)",
+          "gad7.sum_score" = "Current anxiety symptoms (GAD7)",
+          "anxietyPRS_z" = "Anxiety PRS",
+          "depression05_PRS_z" = "MDD PRS",
+          "neuroticismPRS_z" = "Neuroticism PRS",
+          "adhdPRS_z" = "ADHD PRS",
+          "autismPRS_z" = "Autism PRS",
+          "schizophreniaPRS_z" = "Schizophrenia PRS",
+          "educationPRS_z" = "Educational attainment PRS",
+          "batch_recodedGLAD_b09" = "GLAD genotyping batch set 1",
+          "batch_recodedGLAD_b16_b17_merged" = "GLAD genotyping batch set 2",
+          "batch_recodedGLAD_b12" = "GLAD genotyping batch set 3",
+          "batch_recodedNBR_r2_v1_r3_v2_merged" = "COPING NBR batch set 1",
+          "batch_recodedNBR_r1_v1_merged" = "COPING NBR batch set 2",
+          "batch_recodedNBR_r1_v2_merged" = "COPING NBR batch set 3"),
+        OR = format(round(estimate, 2), nsmall=2, scientific = FALSE),
+        "95% CI" = paste0(
+        format(round(conf.low, 2), nsmall = 2, scientific = FALSE),", ",
+        format(round(conf.high, 2), nsmall = 2, scientific = FALSE)),
+        "adjusted.p.value" = 
+           p.adjust(p.value, method = "fdr"),
+        "adjusted p value" = case_when(
+          adjusted.p.value < 0.001 ~ formatC(adjusted.p.value, format = "e", digits = 2),
+          adjusted.p.value >= 0.001 & adjusted.p.value < 0.01 ~ formatC(adjusted.p.value, format = "f", digits = 3),
+          adjusted.p.value >= 0.01 ~ formatC(adjusted.p.value, format = "f", digits = 2)
+        ),
+        "p value" = case_when(
+          p.value < 0.001 ~ formatC(p.value, format = "e", digits = 2),
+          p.value >= 0.001 & p.value < 0.01 ~ formatC(p.value, format = "f", digits = 3),
+          p.value >= 0.01 ~ formatC(p.value, format = "f", digits = 2)
+        )
+      ) %>%
+      select(
+        "Independent variable",
+        OR, 
+        "95% CI", 
+        "p value",
+        "adjusted p value"
+      )  %>% 
+      mutate("Independent variable" = fct_relevel(
+        .f = `Independent variable`,
+        Variable_ordered_results
+        )
+      )
+  )
+
+  return(get(paste0(outcome, ".", variables, "_reg_stats")))
+}
+```
+
+
+# Main analysis
+
+## Model Ns dataframe
+
+```{r create empty model Ns dataframe for main analysis, include=FALSE}
+#Set up the column labels and column names for the Ns datasets for the main analysis models
+model_Ns_labels_main_analysis <- c("Sociodemographic", "Trauma", "Clinical", "Full")
+model_Ns_dataframe_main_analysis <- setNames(data.frame(matrix(ncol = 3, nrow = 4)), c("Outcome", "Model", 
+                                                                                  "N included"#, "N excluded"
+                                                                                  ))
+```
+
+## Logistic regressions
+
+### Outcome1: anxiety-anxiety (vs single anxiety)
+
+#### Unadjusted model
+*Sociodemographic model, unadjusted*
+```{r outcome1 sociodemographic model (all analyses) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome1_sociodemographic_estimates <- model.estimates(outcome = "single_anxiety_vs_anxiety_anxiety_numeric",
+                                                       variables = sociodemographic_variables,
+                                                       data_set = "dat_outcome1")
+#kable(outcome1_sociodemographic_estimates)
+#outcome1_sociodemographic_estimates
+
+# Regression diagnostic statistics
+outcome1_sociodemographic_reg_stats <- model.reg.stats(outcome = "single_anxiety_vs_anxiety_anxiety_numeric",
+                                                       variables = sociodemographic_variables,
+                                                       data_set = "dat_outcome1")
+#kable(outcome1_sociodemographic_reg_stats)
+#outcome1_sociodemographic_reg_stats
+```
+
+*Trauma model*  
+
+```{r outcome1 vulnerability model (main analysis and analysis 2b) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome1_trauma_estimates <- model.estimates(outcome = "single_anxiety_vs_anxiety_anxiety_numeric",
+                                             variables = trauma_variables,
+                                             data_set = "dat_outcome1")
+#kable(outcome1_trauma_estimates)
+#outcome1_trauma_estimates
+
+# Regression diagnostic statistics
+outcome1_trauma_reg_stats <- model.reg.stats(outcome = "single_anxiety_vs_anxiety_anxiety_numeric",
+                                             variables = trauma_variables,
+                                             data_set = "dat_outcome1")
+kable(outcome1_trauma_reg_stats)
+#outcome1_trauma_reg_stats
+```
+
+*Clinical model, unadjusted*
+```{r outcome1 clinical model (all analyses) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome1_clinical_estimates <- model.estimates(outcome = "single_anxiety_vs_anxiety_anxiety_numeric",
+                                               variables = clinical_variables,
+                                               data_set = "dat_outcome1")
+#kable(outcome1_clinical_estimates)
+#outcome1_clinical_estimates
+
+# Regression diagnostic statistics
+outcome1_clinical_reg_stats <- model.reg.stats(outcome = "single_anxiety_vs_anxiety_anxiety_numeric",
+                                               variables = clinical_variables,
+                                               data_set = "dat_outcome1")
+kable(outcome1_clinical_reg_stats)
+#outcome1_clinical_reg_stats
+```
+
+
+#### Full model
+Excludes family history variables  
+Excludes genetic variables  
+```{r outcome1 full model (main analysis) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome1_all_factors_estimates_main_analysis <- model.estimates(outcome = "single_anxiety_vs_anxiety_anxiety_numeric",
+                                                                variables = all_explanatory_variables_main_analysis,
+                                                                data_set = "dat_outcome1")
+#kable(outcome1_all_factors_estimates_main_analysis)
+#outcome1_all_factors_estimates_main_analysis
+
+# Regression diagnostic statistics
+outcome1_all_factors_reg_stats_main_analysis <- model.reg.stats(outcome = "single_anxiety_vs_anxiety_anxiety_numeric",
+                                                                variables = all_explanatory_variables_main_analysis,
+                                                                data_set = "dat_outcome1")
+kable(outcome1_all_factors_reg_stats_main_analysis)
+#outcome1_all_factors_reg_stats_main_analysis
+```
+
+```{r vif main analysis outcome1}
+vif_main_analysis_outcome1 <- model.vif(
+  outcome = "single_anxiety_vs_anxiety_anxiety_numeric",
+  variables = all_explanatory_variables_main_analysis,
+  data_set = "dat_outcome1")
+
+vif_main_analysis_outcome1 
+```
+
+#### Check multicollinearity effect of gad7 on phq9
+
+##### Unadjusted model
+```{r outcome1 clinical model (without gad7) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome1_clinical_estimates_nogad7 <- model.estimates(outcome = "single_anxiety_vs_anxiety_anxiety_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% "gad7.sum_score"],
+                                               data_set = "dat_outcome1")
+#kable(outcome1_clinical_estimates_nogad7)
+#outcome1_clinical_estimates_nogad7
+
+# Regression diagnostic statistics
+outcome1_clinical_reg_stats_nogad7 <- model.reg.stats(outcome = "single_anxiety_vs_anxiety_anxiety_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% "gad7.sum_score"],
+                                               data_set = "dat_outcome1")
+kable(outcome1_clinical_reg_stats_nogad7)
+#outcome1_clinical_reg_stats_nogad7
+```
+
+##### Full model
+```{r outcome1 full model (main analysis without gad7) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome1__all_factors_estimates_main_analysis_nogad7 <- model.estimates(outcome = "single_anxiety_vs_anxiety_anxiety_numeric",
+                                               variables = all_explanatory_variables_main_analysis[!all_explanatory_variables_main_analysis %in% "gad7.sum_score"],
+                                               data_set = "dat_outcome1")
+#kable(outcome1__all_factors_estimates_main_analysis_nogad7)
+#outcome1__all_factors_estimates_main_analysis_nogad7
+
+# Regression diagnostic statistics
+outcome1_all_factors_reg_stats_main_analysis_nogad7 <- model.reg.stats(outcome = "single_anxiety_vs_anxiety_anxiety_numeric",
+                                               variables = all_explanatory_variables_main_analysis[!all_explanatory_variables_main_analysis %in% "gad7.sum_score"],
+                                               data_set = "dat_outcome1")
+kable(outcome1_all_factors_reg_stats_main_analysis_nogad7)
+#outcome1__all_factors_reg_stats_main_analysis_nogad7
+```
+
+```{r format outcome1 full model without gad7 table without, include=FALSE}
+outcome1_clinical_nogad7_formatted <- rbind(outcome1_all_factors_reg_stats_main_analysis_nogad7) %>%
+  mutate(
+    "sig.thresholds" =
+      case_when(
+        as.numeric(`adjusted p value`) <= 0.001 ~ "***",
+        as.numeric(`adjusted p value`) <= 0.01 ~ "**",
+        as.numeric(`adjusted p value`) <= 0.05 ~ "*",
+        as.numeric(`adjusted p value`) > 0.05 ~ ""
+      ),
+    Value = 
+      paste0(
+        format(OR, nsmall=2),
+        sig.thresholds,
+        " (", 
+        `95% CI`,
+        ")"
+      )
+  ) %>% 
+  select(
+    "Variable" = "Independent variable",
+    "Anx-anx (vs Anx) model without GAD7 OR (95% CI)" = "Value"
+  ) %>% 
+  filter(
+    Variable != "Intercept"
+  ) %>% 
+  mutate("Variable" = fct_relevel(
+    .f = Variable,
+    Variable_ordered_results
+    )
+  ) %>% 
+  arrange(Variable)
+
+kable(outcome1_clinical_nogad7_formatted)
+```
+
+*outcome1 model Ns*  
+Number of participants included in each model  
+```{r outcome1 model Ns for main analysis, echo=FALSE}
+#Sociodemographic model
+## N included
+outcome1_sociodemographic_N <- dat_outcome1 %>% 
+    select(sociodemographic_variables) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Trauma model (GLAD baseline, trauma only)
+## N included
+outcome1_trauma_N <- dat_outcome1 %>% 
+    select(trauma_variables) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Clinical model
+## N included
+outcome1_clinical_N <- dat_outcome1 %>% 
+    select(clinical_variables) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Genetic model
+## N included
+outcome1_genetic_N <- dat_outcome1 %>% 
+    select(genetic_variables_batch_pcs) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Full model
+## N included
+outcome1_full_main_analysis_N <- dat_outcome1 %>% 
+    select(all_explanatory_variables_main_analysis) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Dataframe with all values
+outcome1_all_models_included_main_analysis <- c(outcome1_sociodemographic_N, 
+                                                outcome1_trauma_N, 
+                                                outcome1_clinical_N, 
+                                                outcome1_full_main_analysis_N
+                                                )
+
+outcome1_model_Ns_main_analysis <- model_Ns_dataframe_main_analysis %>% 
+  mutate(
+    Outcome = "anxiety-anxiety (vs single anxiety)",
+    Model = model_Ns_labels_main_analysis,
+    `N included` = outcome1_all_models_included_main_analysis
+  )
+
+kable(outcome1_model_Ns_main_analysis)
+```
+
+
+### Outcome2: anxiety-anxiety (vs single anxiety)
+
+#### Unadjusted models
+
+*Sociodemographic model, unadjusted*
+```{r outcome2 sociodemographic model (all analyses) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome2_sociodemographic_estimates <- model.estimates(outcome = "single_anxiety_vs_anxiety_depression_numeric",
+                                                       variables = sociodemographic_variables,
+                                                       data_set = "dat_outcome2")
+#kable(outcome2_sociodemographic_estimates)
+#outcome2_sociodemographic_estimates
+
+# Regression diagnostic statistics
+outcome2_sociodemographic_reg_stats <- model.reg.stats(outcome = "single_anxiety_vs_anxiety_depression_numeric",
+                                                       variables = sociodemographic_variables,
+                                                       data_set = "dat_outcome2")
+kable(outcome2_sociodemographic_reg_stats)
+#outcome2_sociodemographic_reg_stats
+```
+
+*Trauma model, unadjusted*
+```{r outcome2 vulnerability model (main analysis and analysis 2b) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome2_trauma_estimates <- model.estimates(outcome = "single_anxiety_vs_anxiety_depression_numeric",
+                                             variables = trauma_variables,
+                                             data_set = "dat_outcome2")
+#kable(outcome2_trauma_estimates)
+#outcome2_trauma_estimates
+
+# Regression diagnostic statistics
+outcome2_trauma_reg_stats <- model.reg.stats(outcome = "single_anxiety_vs_anxiety_depression_numeric",
+                                             variables = trauma_variables,
+                                             data_set = "dat_outcome2")
+kable(outcome2_trauma_reg_stats)
+#outcome2_trauma_reg_stats
+```
+
+*Clinical model, unadjusted*
+```{r outcome2 clinical model (all analyses) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome2_clinical_estimates <- model.estimates(outcome = "single_anxiety_vs_anxiety_depression_numeric",
+                                               variables = clinical_variables,
+                                               data_set = "dat_outcome2")
+#kable(outcome2_clinical_estimates)
+#outcome2_clinical_estimates
+
+# Regression diagnostic statistics
+outcome2_clinical_reg_stats <- model.reg.stats(outcome = "single_anxiety_vs_anxiety_depression_numeric",
+                                               variables = clinical_variables,
+                                               data_set = "dat_outcome2")
+kable(outcome2_clinical_reg_stats)
+#outcome2_clinical_reg_stats
+```
+
+##### Check confounding effect of phq9 on gad7
+
+```{r outcome2 clinical model (without phq9) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome2_clinical_estimates_nophq9 <- model.estimates(outcome = "single_anxiety_vs_anxiety_depression_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% "phq9.sum_score"],
+                                               data_set = "dat_outcome2")
+#kable(outcome2_clinical_estimates)
+#outcome2_clinical_estimates
+
+# Regression diagnostic statistics
+outcome2_clinical_reg_stats_nophq9 <- model.reg.stats(outcome = "single_anxiety_vs_anxiety_depression_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% "phq9.sum_score"],
+                                               data_set = "dat_outcome2")
+kable(outcome2_clinical_reg_stats_nophq9)
+#outcome2_clinical_reg_stats
+```
+
+#### Full model
+All GLAD baseline variables  
+Excludes family history variable  
+Excludes genetic variables
+```{r outcome2 full model (main analysis) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome2_all_factors_estimates_main_analysis <- model.estimates(outcome = "single_anxiety_vs_anxiety_depression_numeric",
+                                                                variables = all_explanatory_variables_main_analysis,
+                                                                data_set = "dat_outcome2")
+#kable(outcome2_all_factors_estimates_main_analysis)
+#outcome2_all_factors_estimates_main_analysis
+
+# Regression diagnostic statistics
+outcome2_all_factors_reg_stats_main_analysis <- model.reg.stats(outcome = "single_anxiety_vs_anxiety_depression_numeric",
+                                                                variables = all_explanatory_variables_main_analysis,
+                                                                data_set = "dat_outcome2")
+kable(outcome2_all_factors_reg_stats_main_analysis)
+#outcome2_all_factors_reg_stats_main_analysis
+```
+
+```{r vif main analysis outcome2}
+vif_main_analysis_outcome2 <- model.vif(
+  outcome = "single_anxiety_vs_anxiety_depression_numeric",
+  variables = all_explanatory_variables_main_analysis,
+  data_set = "dat_outcome2")
+
+vif_main_analysis_outcome2
+```
+
+
+##### Check confounding effect of phq9 on gad7
+
+```{r outcome2 full model (main analysis, without phq9) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome2_all_factors_estimates_main_analysis_nophq9 <- model.estimates(outcome = "single_anxiety_vs_anxiety_depression_numeric",
+                                               variables = all_explanatory_variables_main_analysis[!all_explanatory_variables_main_analysis %in% "phq9.sum_score"],
+                                               data_set = "dat_outcome2")
+#kable(outcome2_all_factors_estimates_main_analysis_nophq9)
+#outcome2_all_factors_estimates_main_analysis_nophq9
+
+# Regression diagnostic statistics
+outcome2_all_factors_reg_stats_main_analysis_nophq9 <- model.reg.stats(outcome = "single_anxiety_vs_anxiety_depression_numeric",
+                                               variables = all_explanatory_variables_main_analysis[!all_explanatory_variables_main_analysis %in% "phq9.sum_score"],
+                                               data_set = "dat_outcome2")
+kable(outcome2_all_factors_reg_stats_main_analysis_nophq9)
+#outcome2_all_factors_reg_stats_main_analysis_nophq9
+```
+
+#### Model Ns dataframe
+*outcome2 model Ns*  
+Number of participants included in each model
+```{r outcome2 model Ns for main analysis, echo=FALSE}
+#Sociodemographic model
+## N included
+outcome2_sociodemographic_N <- dat_outcome2 %>% 
+    select(sociodemographic_variables) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Trauma model
+## N included
+outcome2_trauma_N <- dat_outcome2 %>% 
+    select(trauma_variables) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Clinical model
+## N included
+outcome2_clinical_N <- dat_outcome2 %>% 
+    select(clinical_variables) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Full model (main analysis)
+## N included
+outcome2_full_main_analysis_N <- dat_outcome2 %>% 
+    select(all_explanatory_variables_main_analysis) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Dataframe with all values
+outcome2_all_models_included_main_analysis <- c(outcome2_sociodemographic_N, 
+                                                outcome2_trauma_N,  
+                                                outcome2_clinical_N, 
+                                                outcome2_full_main_analysis_N
+                                                )
+
+outcome2_model_Ns_main_analysis <- model_Ns_dataframe_main_analysis %>% 
+  mutate(
+    Outcome = "anxiety-MDD (vs single anxiety)",
+    Model = model_Ns_labels_main_analysis,
+    `N included` = outcome2_all_models_included_main_analysis
+  )
+kable(outcome2_model_Ns_main_analysis)
+```
+
+### Outcome3: anxiety-anxiety (vs anxiety-MDD)
+
+#### Unadjusted models
+
+*Sociodemographic model, unadjusted*
+```{r outcome3 sociodemographic model (all analyses) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome3_sociodemographic_estimates <- model.estimates(outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+                                                       variables = sociodemographic_variables,
+                                                       data_set = "dat_outcome3")
+#kable(outcome3_sociodemographic_estimates)
+#outcome3_sociodemographic_estimates
+
+# Regression diagnostic statistics
+outcome3_sociodemographic_reg_stats <- model.reg.stats(outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+                                                       variables = sociodemographic_variables,
+                                                       data_set = "dat_outcome3")
+kable(outcome3_sociodemographic_reg_stats)
+#outcome3_sociodemographic_reg_stats
+```
+
+*Trauma model, unadjusted*  
+Excludes family history variables
+```{r outcome3 trauma model (main analyses and analysis 2b) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome3_trauma_estimates <- model.estimates(outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+                                             variables = trauma_variables,
+                                             data_set = "dat_outcome3")
+#kable(outcome3_trauma_estimates)
+#outcome3_trauma_estimates
+
+# Regression diagnostic statistics
+outcome3_trauma_reg_stats <- model.reg.stats(outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+                                             variables = trauma_variables,
+                                             data_set = "dat_outcome3")
+kable(outcome3_trauma_reg_stats)
+#outcome3_trauma_reg_stats
+```
+
+*Clinical model, unadjusted*
+```{r outcome3 clinical model, echo=FALSE}
+# Regression coefficients
+outcome3_clinical_estimates <- model.estimates(outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+                                               variables = clinical_variables,
+                                               data_set = "dat_outcome3")
+#kable(outcome3_clinical_estimates)
+#outcome3_clinical_estimates
+
+# Regression diagnostic statistics
+outcome3_clinical_reg_stats <- model.reg.stats(outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+                                               variables = clinical_variables,
+                                               data_set = "dat_outcome3")
+kable(outcome3_clinical_reg_stats)
+#outcome3_clinical_reg_stats
+```
+
+#### Full model 
+All GLAD baseline variables  
+Excludes family history variable  
+Excludes genetic variables  
+```{r outcome3 full model (main analysis), echo=FALSE}
+# Regression coefficients
+outcome3_all_factors_estimates_main_analysis <- model.estimates(outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+                                                                variables = all_explanatory_variables_main_analysis,
+                                                                data_set = "dat_outcome3")
+#kable(outcome3_all_factors_estimates_main_analysis)
+#outcome3_all_factors_estimates_main_analysis
+
+# Regression diagnostic statistics
+outcome3_all_factors_reg_stats_main_analysis <- model.reg.stats(outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+                                                                variables = all_explanatory_variables_main_analysis,
+                                                                data_set = "dat_outcome3")
+kable(outcome3_all_factors_reg_stats_main_analysis)
+#outcome3_all_factors_reg_stats_main_analysis
+```
+
+#### Check multicollinearity effect of age of onset on recurrence
+
+##### Unadjusted model
+```{r outcome3 clinical model (without AOO) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome3_clinical_estimates_noAOO <- model.estimates(outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% "min_age_of_onset_adjusted"],
+                                               data_set = "dat_outcome3")
+#kable(outcome3_clinical_estimates_noAOO)
+#outcome3_clinical_estimates_noAOO
+
+# Regression diagnostic statistics
+outcome3_clinical_reg_stats_noAOO <- model.reg.stats(outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% "min_age_of_onset_adjusted"],
+                                               data_set = "dat_outcome3")
+kable(outcome3_clinical_reg_stats_noAOO)
+#outcome3_clinical_reg_stats_noAOO
+```
+
+##### Full model
+```{r outcome3 full model (main analysis without AOO) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome3_all_factors_estimates_main_analysis_noAOO <- model.estimates(outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+                                               variables = all_explanatory_variables_main_analysis[!all_explanatory_variables_main_analysis %in% "min_age_of_onset_adjusted"],
+                                               data_set = "dat_outcome3")
+#kable(outcome3_all_factors_estimates_main_analysis_noAOO)
+#outcome3_all_factors_estimates_main_analysis_noAOO
+
+# Regression diagnostic statistics
+outcome3_all_factors_reg_stats_main_analysis_noAOO <- model.reg.stats(outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+                                               variables = all_explanatory_variables_main_analysis[!all_explanatory_variables_main_analysis %in% "min_age_of_onset_adjusted"],
+                                               data_set = "dat_outcome3")
+kable(outcome3_all_factors_reg_stats_main_analysis_noAOO)
+#outcome3_all_factors_reg_stats_main_analysis_noAOO
+```
+
+```{r format outcome3 full model without AOO table, include=FALSE}
+outcome3_all_factors_noAOO_formatted <- rbind(outcome3_all_factors_reg_stats_main_analysis_noAOO) %>%
+  mutate(
+    "sig.thresholds" =
+      case_when(
+        as.numeric(`adjusted p value`) <= 0.001 ~ "***",
+        as.numeric(`adjusted p value`) <= 0.01 ~ "**",
+        as.numeric(`adjusted p value`) <= 0.05 ~ "*",
+        as.numeric(`adjusted p value`) > 0.05 ~ ""
+      ),
+    OR_sign = paste0(
+        format(OR, nsmall=2, scientific = FALSE),
+        sig.thresholds),
+    CI_nospace = 
+      paste0(
+        "(", 
+        format(`95% CI`, nsmall=2, scientific = FALSE),
+        ")"
+      ),
+    across(where(is.character), str_remove_all, pattern = fixed(" ")),
+    Value = 
+      paste(OR_sign, CI_nospace, sep = " "),
+    across(where(is.character), str_replace, pattern = ",", replacement = ", ")
+  ) %>% 
+  select(
+    "Variable" = "Independent variable",
+    "Anx-anx (vs Anx-MDD) model without AOO OR (95% CI)" = "Value"
+  ) %>% 
+  filter(
+    Variable != "Intercept"
+  ) %>% 
+  mutate("Variable" = fct_relevel(
+    .f = Variable,
+    Variable_ordered_results
+    )
+  ) %>% 
+  arrange(Variable)
+
+kable(outcome3_all_factors_noAOO_formatted)
+```
+
+
+#### Check multicollinearity effect of phq9 and AOO on recurrence
+
+##### Unadjusted model
+```{r outcome3 clinical model (without phq9 and AOO) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome3_clinical_estimates_nophq9_noAOO <- model.estimates(outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% c("phq9.sum_score", "min_age_of_onset_adjusted")],
+                                               data_set = "dat_outcome3")
+#kable(outcome3_clinical_estimates_nophq9_noAOO)
+#outcome3_clinical_estimates_nophq9_noAOO
+
+# Regression diagnostic statistics
+outcome3_clinical_reg_stats_nophq9_noAOO <- model.reg.stats(outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% c("phq9.sum_score", "min_age_of_onset_adjusted")],
+                                               data_set = "dat_outcome3")
+kable(outcome3_clinical_reg_stats_nophq9_noAOO)
+#outcome3_clinical_reg_stats_nophq9_noAOO
+```
+
+##### Full model
+```{r outcome3 full model (main analysis without phq9 and AOO) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome3_all_factors_estimates_main_analysis_nophq9_noAOO <- model.estimates(outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+                                               variables = all_explanatory_variables_main_analysis[!all_explanatory_variables_main_analysis %in% c("phq9.sum_score", "min_age_of_onset_adjusted")],
+                                               data_set = "dat_outcome3")
+#kable(outcome3_all_factors_estimates_main_analysis_nophq9_noAOO)
+#outcome3_all_factors_estimates_main_analysis_nophq9_noAOO
+
+# Regression diagnostic statistics
+outcome3_all_factors_reg_stats_main_analysis_nophq9_noAOO <- model.reg.stats(outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+                                               variables = all_explanatory_variables_main_analysis[!all_explanatory_variables_main_analysis %in% c("phq9.sum_score", "min_age_of_onset_adjusted")],
+                                               data_set = "dat_outcome3")
+kable(outcome3_all_factors_reg_stats_main_analysis_nophq9_noAOO)
+#outcome3_all_factors_reg_stats_main_analysis_nophq9_noAOO
+```
+
+```{r format outcome3 full model without phq9 and AOO table, include=FALSE}
+outcome3_all_factors_nophq9_noAOO_formatted <- rbind(outcome3_all_factors_reg_stats_main_analysis_nophq9_noAOO) %>%
+  mutate(
+    "sig.thresholds" =
+      case_when(
+        as.numeric(`adjusted p value`) <= 0.001 ~ "***",
+        as.numeric(`adjusted p value`) <= 0.01 ~ "**",
+        as.numeric(`adjusted p value`) <= 0.05 ~ "*",
+        as.numeric(`adjusted p value`) > 0.05 ~ ""
+      ),
+    OR_sign = paste0(
+        format(OR, nsmall=2, scientific = FALSE),
+        sig.thresholds),
+    CI_nospace = 
+      paste0(
+        "(", 
+        format(`95% CI`, nsmall=2, scientific = FALSE),
+        ")"
+      ),
+    across(where(is.character), str_remove_all, pattern = fixed(" ")),
+    Value = 
+      paste(OR_sign, CI_nospace, sep = " "),
+    across(where(is.character), str_replace, pattern = ",", replacement = ", ")
+  ) %>% 
+  select(
+    "Variable" = "Independent variable",
+    "Anx-anx (vs Anx-MDD) model without phq9 and AOO OR (95% CI)" = "Value"
+  ) %>% 
+  filter(
+    Variable != "Intercept"
+  ) %>% 
+  mutate("Variable" = fct_relevel(
+    .f = Variable,
+    Variable_ordered_results
+    )
+  ) %>% 
+  arrange(Variable)
+
+kable(outcome3_all_factors_nophq9_noAOO_formatted)
+```
+
+
+```{r vif main analysis outcome3}
+vif_main_analysis_outcome3 <- model.vif(
+  outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+  variables = all_explanatory_variables_main_analysis,
+  data_set = "dat_outcome3")
+
+vif_main_analysis_outcome3 
+```
+
+#### Model Ns dataframe
+
+*Outcome3 model Ns*  
+Number of participants included in each model
+```{r outcome3 model Ns for main analysis, echo=FALSE}
+#Sociodemographic model (all analyses)
+## N included
+outcome3_sociodemographic_N <- dat_outcome3 %>% 
+    select(sociodemographic_variables) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Trauma model (main analysis and analysis 2b)
+## N included
+outcome3_trauma_N <- dat_outcome3 %>% 
+    select(trauma_variables) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Clinical model (all analyses)
+## N included
+outcome3_clinical_N <- dat_outcome3 %>% 
+    select(clinical_variables) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Full model (main analysis)
+## N included
+outcome3_full_main_analysis_N <- dat_outcome3 %>% 
+    select(all_explanatory_variables_main_analysis) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Dataframe with all values
+outcome3_all_models_included_main_analysis <- c(outcome3_sociodemographic_N, 
+                                                outcome3_trauma_N, 
+                                                outcome3_clinical_N, 
+                                                outcome3_full_main_analysis_N
+                                                )
+
+outcome3_model_Ns_main_analysis <- model_Ns_dataframe_main_analysis %>% 
+  mutate(
+    Outcome = "anxiety-anxiety (vs anxiety-MDD)",
+    Model = model_Ns_labels_main_analysis,
+    `N included` = outcome3_all_models_included_main_analysis
+  )
+kable(outcome3_model_Ns_main_analysis)
+```
+
+### Outcome4: anxiety-MDD (vs MDD only)
+
+#### Unadjusted models
+Sociodemographic model, unadjusted
+```{r outcome4 sociodemographic model (all models) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome4_sociodemographic_estimates <- model.estimates(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                                       variables = sociodemographic_variables,
+                                                       data_set = "dat_outcome4")
+#kable(outcome4_sociodemographic_estimates)
+#outcome4_sociodemographic_estimates
+
+# Regression diagnostic statistics
+outcome4_sociodemographic_reg_stats <- model.reg.stats(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                                       variables = sociodemographic_variables,
+                                                       data_set = "dat_outcome4")
+kable(outcome4_sociodemographic_reg_stats)
+#outcome4_sociodemographic_reg_stats
+```
+
+*Trauma model, unadjusted*  
+Excludes family history variables
+```{r outcome4 trauma model (main analysis and analysis 2b) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome4_trauma_estimates <- model.estimates(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                             variables = trauma_variables,
+                                             data_set = "dat_outcome4")
+#kable(outcome4_trauma_estimates)
+#outcome4_trauma_estimates
+
+# Regression diagnostic statistics
+outcome4_trauma_reg_stats <- model.reg.stats(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                             variables = trauma_variables,
+                                             data_set = "dat_outcome4")
+kable(outcome4_trauma_reg_stats)
+#outcome4_trauma_reg_stats
+```
+
+*Clinical model, unadjusted*
+```{r outcome4 clinical model unadjusted, echo=FALSE}
+# Regression coefficients
+outcome4_clinical_estimates <- model.estimates(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                               variables = clinical_variables,
+                                               data_set = "dat_outcome4")
+#kable(outcome4_clinical_estimates)
+#outcome4_clinical_estimates
+
+# Regression diagnostic statistics
+outcome4_clinical_reg_stats <- model.reg.stats(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                               variables = clinical_variables,
+                                               data_set = "dat_outcome4")
+kable(outcome4_clinical_reg_stats)
+#outcome4_clinical_reg_stats
+```
+
+
+##### Check confounding effect of gad7 & phq9
+
+```{r outcome4 clinical model (without phq9) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome4_clinical_estimates_nophq9 <- model.estimates(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% "phq9.sum_score"],
+                                               data_set = "dat_outcome4")
+#kable(outcome4_clinical_estimates_nophq9)
+#outcome4_clinical_estimates_nophq9
+
+# Regression diagnostic statistics
+outcome4_clinical_reg_stats_nophq9 <- model.reg.stats(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% "phq9.sum_score"],
+                                               data_set = "dat_outcome4")
+kable(outcome4_clinical_reg_stats_nophq9)
+#outcome4_clinical_reg_stats_nophq9
+```
+
+```{r outcome4 clinical model (without gad7) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome4_clinical_estimates_nogad7 <- model.estimates(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% "gad7.sum_score"],
+                                               data_set = "dat_outcome4")
+#kable(outcome4_clinical_estimates_nogad7)
+#outcome4_clinical_estimates_nogad7
+
+# Regression diagnostic statistics
+outcome4_clinical_reg_stats_nogad7 <- model.reg.stats(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% "gad7.sum_score"],
+                                               data_set = "dat_outcome4")
+kable(outcome4_clinical_reg_stats_nogad7)
+#outcome4_clinical_reg_stats_nogad7
+```
+
+#### Full model
+
+All GLAD baseline variables  
+Excludes family history variable  
+Excludes genetic variables  
+```{r outcome4 full model (main analysis), echo=FALSE}
+# Regression coefficients
+outcome4_all_factors_estimates_main_analysis <- model.estimates(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                                                variables = all_explanatory_variables_main_analysis,
+                                                                data_set = "dat_outcome4")
+#kable(outcome4_all_factors_estimates_main_analysis)
+#outcome4_all_factors_estimates_main_analysis
+
+# Regression diagnostic statistics
+outcome4_all_factors_reg_stats_main_analysis <- model.reg.stats(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                                                variables = all_explanatory_variables_main_analysis,
+                                                                data_set = "dat_outcome4")
+kable(outcome4_all_factors_reg_stats_main_analysis)
+#outcome4_all_factors_reg_stats_main_analysis
+```
+
+```{r vif main analysis outcome4}
+vif_main_analysis_outcome4 <- model.vif(
+  outcome = "single_depression_vs_anxiety_depression_numeric",
+  variables = all_explanatory_variables_main_analysis,
+  data_set = "dat_outcome4")
+
+vif_main_analysis_outcome4 
+```
+
+##### Check multicollineary effects 
+
+###### gad7 & phq9
+
+```{r outcome4 full model (without phq9) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome4__all_factors_estimates_main_analysis_nophq9 <- model.estimates(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                               variables = all_explanatory_variables_main_analysis[!all_explanatory_variables_main_analysis %in% "phq9.sum_score"],
+                                               data_set = "dat_outcome4")
+#kable(outcome4__all_factors_estimates_main_analysis_nophq9)
+#outcome4__all_factors_estimates_main_analysis_nophq9
+
+# Regression diagnostic statistics
+outcome4__all_factors_reg_stats_main_analysis_nophq9 <- model.reg.stats(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                               variables = all_explanatory_variables_main_analysis[!all_explanatory_variables_main_analysis %in% "phq9.sum_score"],
+                                               data_set = "dat_outcome4")
+kable(outcome4__all_factors_reg_stats_main_analysis_nophq9)
+#outcome4__all_factors_reg_stats_main_analysis_nophq9
+```
+
+```{r outcome4 full model (main analysis without gad7) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome4_all_factors_estimates_main_analysis_nogad7 <- model.estimates(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                               variables = all_explanatory_variables_main_analysis[!all_explanatory_variables_main_analysis %in% "gad7.sum_score"],
+                                               data_set = "dat_outcome4")
+#kable(outcome4__all_factors_estimates_main_analysis_nogad7)
+#outcome4__all_factors_estimates_main_analysis_nogad7
+
+# Regression diagnostic statistics
+outcome4_all_factors_reg_stats_main_analysis_nogad7 <- model.reg.stats(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                               variables = all_explanatory_variables_main_analysis[!all_explanatory_variables_main_analysis %in% "gad7.sum_score"],
+                                               data_set = "dat_outcome4")
+#kable(outcome4__all_factors_reg_stats_main_analysis_nogad7)
+#outcome4_all_factors_reg_stats_main_analysis_nogad7
+```
+```{r format outcome4 full model without gad7 table, include=FALSE}
+outcome4_all_factors_nogad7_formatted <- rbind(outcome4_all_factors_reg_stats_main_analysis_nogad7) %>%
+  mutate(
+    "sig.thresholds" =
+      case_when(
+        as.numeric(`adjusted p value`) <= 0.001 ~ "***",
+        as.numeric(`adjusted p value`) <= 0.01 ~ "**",
+        as.numeric(`adjusted p value`) <= 0.05 ~ "*",
+        as.numeric(`adjusted p value`) > 0.05 ~ ""
+      ),
+    OR_sign = paste0(
+        format(OR, nsmall=2, scientific = FALSE),
+        sig.thresholds),
+    CI_nospace = 
+      paste0(
+        "(", 
+        format(`95% CI`, nsmall=2, scientific = FALSE),
+        ")"
+      ),
+    across(where(is.character), str_remove_all, pattern = fixed(" ")),
+    Value = 
+      paste(OR_sign, CI_nospace, sep = " "),
+    across(where(is.character), str_replace, pattern = ",", replacement = ", ")
+  ) %>% 
+  select(
+    "Variable" = "Independent variable",
+    "Anx-MDD (vs MDD only) model without GAD7 OR (95% CI)" = "Value"
+  ) %>% 
+  filter(
+    Variable != "Intercept"
+  ) %>% 
+  mutate("Variable" = fct_relevel(
+    .f = Variable,
+    Variable_ordered_results
+    )
+  ) %>% 
+  arrange(Variable)
+
+kable(outcome4_all_factors_nogad7_formatted)
+```
+
+###### age of onset on other variables
+
+Unadjusted model
+```{r outcome4 clinical model (without AOO) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome4_clinical_estimates_noAOO <- model.estimates(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% "min_age_of_onset_adjusted"],
+                                               data_set = "dat_outcome4")
+#kable(outcome4_clinical_estimates_noAOO)
+#outcome4_clinical_estimates_noAOO
+
+# Regression diagnostic statistics
+outcome4_clinical_reg_stats_noAOO <- model.reg.stats(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% "min_age_of_onset_adjusted"],
+                                               data_set = "dat_outcome4")
+kable(outcome4_clinical_reg_stats_noAOO)
+#outcome4_clinical_reg_stats_noAOO
+```
+
+Full model
+```{r outcome4 full model (main analysis without AOO) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome4_all_factors_estimates_main_analysis_noAOO <- model.estimates(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                               variables = all_explanatory_variables_main_analysis[!all_explanatory_variables_main_analysis %in% "min_age_of_onset_adjusted"],
+                                               data_set = "dat_outcome4")
+#kable(outcome4_all_factors_estimates_main_analysis_noAOO)
+#outcome4_all_factors_estimates_main_analysis_noAOO
+
+# Regression diagnostic statistics
+outcome4_all_factors_reg_stats_main_analysis_noAOO <- model.reg.stats(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                               variables = all_explanatory_variables_main_analysis[!all_explanatory_variables_main_analysis %in% "min_age_of_onset_adjusted"],
+                                               data_set = "dat_outcome4")
+kable(outcome4_all_factors_reg_stats_main_analysis_noAOO)
+#outcome4_all_factors_reg_stats_main_analysis_noAOO
+```
+
+```{r format outcome4 full model without AOO table, include=FALSE}
+outcome4_all_factors_noAOO_formatted <- rbind(outcome4_all_factors_reg_stats_main_analysis_noAOO) %>%
+  mutate(
+    "sig.thresholds" =
+      case_when(
+        as.numeric(`adjusted p value`) <= 0.001 ~ "***",
+        as.numeric(`adjusted p value`) <= 0.01 ~ "**",
+        as.numeric(`adjusted p value`) <= 0.05 ~ "*",
+        as.numeric(`adjusted p value`) > 0.05 ~ ""
+      ),
+    OR_sign = paste0(
+        format(OR, nsmall=2, scientific = FALSE),
+        sig.thresholds),
+    CI_nospace = 
+      paste0(
+        "(", 
+        format(`95% CI`, nsmall=2, scientific = FALSE),
+        ")"
+      ),
+    across(where(is.character), str_remove_all, pattern = fixed(" ")),
+    Value = 
+      paste(OR_sign, CI_nospace, sep = " "),
+    across(where(is.character), str_replace, pattern = ",", replacement = ", ")
+  ) %>% 
+  select(
+    "Variable" = "Independent variable",
+    "Anx-anx (vs Anx-MDD) model without AOO OR (95% CI)" = "Value"
+  ) %>% 
+  filter(
+    Variable != "Intercept"
+  ) %>% 
+  mutate("Variable" = fct_relevel(
+    .f = Variable,
+    Variable_ordered_results
+    )
+  ) %>% 
+  arrange(Variable)
+
+kable(outcome4_all_factors_noAOO_formatted)
+```
+
+#### Model Ns dataframe
+
+```{r outcome4 model Ns, echo=FALSE}
+#Sociodemographic model (all analyses)
+## N included
+outcome4_sociodemographic_N <- dat_outcome4 %>% 
+    select(sociodemographic_variables) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Trauma model (main analysis + analysis 2b)
+## N included
+outcome4_trauma_N <- dat_outcome4 %>% 
+    select(trauma_variables) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Clinical model (all analyses)
+## N included
+outcome4_clinical_N <- dat_outcome4 %>% 
+    select(clinical_variables) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Full model (main analysis)
+## N included
+outcome4_full_main_analysis_N <- dat_outcome4 %>% 
+    select(all_explanatory_variables_main_analysis) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Dataframe with all values
+outcome4_all_models_included_main_analysis <- c(outcome4_sociodemographic_N, 
+                                               outcome4_trauma_N, 
+                                               outcome4_clinical_N, 
+                                               outcome4_full_main_analysis_N
+                                               )
+
+outcome4_model_Ns_main_analysis <- model_Ns_dataframe_main_analysis %>% 
+  mutate(
+    Outcome = "anxiety-MDD (vs MDD only)",
+    Model = model_Ns_labels_main_analysis,
+    `N included` = outcome4_all_models_included_main_analysis
+  )
+kable(outcome4_model_Ns_main_analysis)
+```
+
+## Combined GLM model Ns table
+
+```{r Ns table for main analysis, echo=FALSE}
+Ns_main_analysis <- rbind(
+  outcome1_model_Ns_main_analysis,
+  outcome2_model_Ns_main_analysis,
+  outcome3_model_Ns_main_analysis,
+  outcome4_model_Ns_main_analysis
+)
+kable(Ns_main_analysis)
+```
+
+## Combined VIF table
+
+```{r vif table for main analysis, echo=FALSE}
+vif_main_analysis <- list(
+  vif_main_analysis_outcome1,
+  vif_main_analysis_outcome2,
+  vif_main_analysis_outcome3,
+  vif_main_analysis_outcome4
+  ) %>% 
+  reduce(full_join, by = c("Variable")) %>% 
+  rename(
+    "Anxiety-anxiety (vs single anxiety)" = "single_anxiety_vs_anxiety_anxiety_numeric",
+    "Anxiety-MDD (vs single anxiety)" = "single_anxiety_vs_anxiety_depression_numeric",
+    "Anxiety-anxiety (vs anxiety-MDD)" = "anxiety_depression_vs_anxiety_anxiety_numeric",
+    "Anxiety-MDD (vs MDD only)" = "single_depression_vs_anxiety_depression_numeric"
+  ) %>% 
+  mutate(
+        "Variable" = recode_factor(
+          Variable,
+          "dem.age_adjusted" = "Age",
+          "dem.sex" = "Sex",
+          "dem.highest_education_ordered_collapsed" = "Highest education",
+          "dem.ethnicity_collapsed" = "Ethnicity",
+          "mhfh.anxiety_or_depression_numeric" = "Family history: Anxiety/depressive disorder",
+          "mhfh.other_disorders_numeric" = "Family history: Other mental health disorder",
+          "cts.any_maltreatment_binary" = "Childhood trauma",
+          "ats.partner_abuse_binary" = "Adult trauma",
+          "ats.catastrophic_trauma_binary" = "Catastrophic trauma",
+          "mhd.anxiety_depression_numeric" = "Self-reported anxiety/depressive disorder diagnosis",
+          "mhd.other_diagnoses_numeric" = "Other self-reported mental health diagnosis",
+          "min_age_of_onset_adjusted" = "Age of onset",
+          "max_recurrence" = "Recurrence",
+          "phq9.sum_score" = "Current depressive symptoms (PHQ9)",
+          "gad7.sum_score" = "Current anxiety symptoms (GAD7)",
+          "anxietyPRS_z" = "Anxiety PRS",
+          "depression05_PRS_z" = "MDD PRS",
+          "neuroticismPRS_z" = "Neuroticism PRS",
+          "adhdPRS_z" = "ADHD PRS",
+          "autismPRS_z" = "Autism PRS",
+          "schizophreniaPRS_z" = "Schizophrenia PRS",
+          "educationPRS_z" = "Educational attainment PRS"))
+
+kable(vif_main_analysis)
+```
+
+
+## Forest Plots
+
+All plots have an adjusted UpperBound
+(UpperBound cut off at 3)
+
+```{r palette for forest, include=FALSE}
+
+forestpal <- c("#993955","#E6C229","#228B22","#2E5077")
+
+```
+
+```{r source forestplot script, include=FALSE}
+source("../anxcmbd_lm_forest_adapted.R")
+```
+
+```{r functions required in book for global assignments for main analysis, echo=FALSE}
+glmoutput_format_main_analysis <- function(lmobject, group, dfname){
+  
+  ## Row labels
+  independent.variables <- c("intercept",
+                             "Age",
+                             "Female",
+                             "University degree",
+                             "A-levels or equivalent",
+                             "GCSEs or equivalent",
+                             # "Mixed or multiple ethnicities",
+                             # "Asian or Asian British",
+                             # "Black or Black British",
+                             # "Other",
+                             #"Minoritised ethnic group",
+                             "White",
+                             "Childhood trauma",
+                             "Adult trauma",
+                             "Catastrophic trauma",
+                             "Anxiety/depressive disorder \ndiagnosis",
+                             "Other mental health \ndiagnosis",
+                             "Age of onset",
+                             "Recurrence",
+                             "Current depressive \nsymptoms",
+                             "Current anxiety \nsymptoms"
+                             )
+                             
+  ## categories to facet on 
+  ### Option 1: Overarching variable categories
+  categories <- c("Intercept",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Trauma",
+                  "Trauma",
+                  "Trauma",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical"#,
+                  #genetic factors here
+                  #"Genetic"
+                  )
+  
+  ## Disorder dimension  
+  groups <- c(group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group#, 
+              #group, add N for N genetic factors
+              )
+  
+  # create data frame
+  df <- lmobject
+  
+  # add row labels
+  df$RowLabels <- independent.variables
+  
+  # Add category labels
+  df$Categories <- categories
+  
+  # Add group labels
+  df$Group <- groups
+  
+  # calculate upper and lower confidence intervals
+  ##logistic regression results include CI - just rename
+  df <- df %>%
+    rename(
+      "LowerBound" = "conf.low",
+      "UpperBound" = "conf.high")
+  
+  # drop intercept row
+  df <- df[(df$RowLabels != 'intercept'),]
+  
+  # order factors
+  df$RowLabels <- factor(df$RowLabels, levels = rev(independent.variables))   ## unadjusted rows
+  df$Categories <- factor(df$Categories, levels = unique(categories))   ## categories
+  
+  
+  # assign dataframe to global environment
+  assign(dfname, df, envir = .GlobalEnv)
+  
+}
+
+
+model.glm.form_main_analysis <- function(outcome, data_set) {
+  
+  # define the variable name of the dependent variable
+  dependent.variable <- outcome
+  # define the independent variables
+  independent.variables <- all_explanatory_variables_main_analysis
+  # create the formula
+  glm.formula <- as.formula(paste(dependent.variable, paste(independent.variables, collapse=" + "), sep=" ~ "))
+  
+  # run the glm
+  assign(paste0(outcome,".glmformula"),
+         glm(formula = glm.formula,
+             data = get(data_set),
+             family = "binomial"
+         )
+  )
+
+  assign(
+    paste0(outcome,"oddsratios.glmformula_analysis_2a"),
+    tidy(
+      get(paste0(outcome,".glmformula")),
+      exponentiate = T,
+      conf.int = T
+    ))
+  
+  return(get(paste0(outcome,"oddsratios.glmformula_analysis_2a")))
+}
+
+```
+
+```{r run main analysis models for all forest plot items, echo=FALSE}
+all.outcome1.glm_main_analysis <-  model.glm.form_main_analysis("single_anxiety_vs_anxiety_anxiety_numeric",
+                                  "dat_outcome1")
+
+all.outcome2.glm_main_analysis <-  model.glm.form_main_analysis("single_anxiety_vs_anxiety_depression_numeric",
+                                  "dat_outcome2")
+
+all.outcome3.glm_main_analysis <-  model.glm.form_main_analysis("anxiety_depression_vs_anxiety_anxiety_numeric",
+                                  "dat_outcome3")
+
+all.outcome4.glm_main_analysis <-  model.glm.form_main_analysis("single_depression_vs_anxiety_depression_numeric",
+                                  "dat_outcome4")
+```
+
+```{r generate main analysis datasets for all plots, echo=FALSE}
+# Results grouped by dependent variable
+glmoutput_format_main_analysis(all.outcome1.glm_main_analysis,"anxiety-anxiety (vs single anxiety)", "outcome1.glm.for.plot_main_analysis")
+
+glmoutput_format_main_analysis(all.outcome2.glm_main_analysis,"anxiety-MDD (vs single anxiety)", "outcome2.glm.for.plot_main_analysis")
+
+glmoutput_format_main_analysis(all.outcome3.glm_main_analysis,"anxiety-anxiety (vs anxiety-MDD)", "outcome3.glm.for.plot_main_analysis")
+
+glmoutput_format_main_analysis(all.outcome4.glm_main_analysis,"anxiety-MDD (vs MDD only)", "outcome4.glm.for.plot_main_analysis")
+
+```
+
+```{r merge main analysis datasets for different combinations, echo=FALSE}
+glm.plot.dat.all_main_analysis <- rbind(outcome1.glm.for.plot_main_analysis,
+                      outcome2.glm.for.plot_main_analysis,
+                      outcome3.glm.for.plot_main_analysis,
+                      outcome4.glm.for.plot_main_analysis)
+```
+
+```{r order group variable for plotting main analysis results, echo=FALSE}
+glm.plot.dat.all_main_analysis$Group <- 
+  fct_relevel(glm.plot.dat.all_main_analysis$Group,
+              "anxiety-MDD (vs MDD only)",
+              "anxiety-anxiety (vs anxiety-MDD)",
+              "anxiety-anxiety (vs single anxiety)",
+              "anxiety-MDD (vs single anxiety)"
+              )
+```
+
+```{r forest plot adjusted UpperBound for full models for main analysis, fig.height=14, fig.width=12, dpi=120, echo=FALSE}
+
+plot_text_size=16
+
+foresplot_all_final_models_adj_main_analysis <- plot_grid(
+  plot_grid(
+    lm.forest(glm.plot.dat.all_main_analysis %>% 
+                filter(Categories=="Sociodemographic") %>% 
+                mutate(UpperBound =
+                         case_when(
+                           UpperBound <= 3 ~ UpperBound,
+                           UpperBound > 3 ~ 3
+                         )), 
+              title="",
+              colourpal=forestpal,
+              uplim=3),
+    lm.forest(glm.plot.dat.all_main_analysis %>% 
+                filter(Categories=="Trauma") %>% 
+                mutate(UpperBound =
+                         case_when(
+                           UpperBound <= 3 ~ UpperBound,
+                           UpperBound > 3 ~ 3
+                         )), 
+              title="",
+              colourpal=forestpal,
+              uplim=3),
+    lm.forest(glm.plot.dat.all_main_analysis %>% 
+                filter(Categories=="Clinical") %>% 
+                mutate(UpperBound =
+                         case_when(
+                           UpperBound <= 3 ~ UpperBound,
+                           UpperBound > 3 ~ 3
+                         )), 
+              title="",
+              colourpal=forestpal,
+              uplim=3) +
+      theme(
+        axis.title.x = element_text(size = plot_text_size),
+        axis.text.x = element_text(size = plot_text_size)),
+    
+    
+    align = "v",
+    nrow = 3,
+    rel_heights = c(7/22, 4/22, 11/22),
+    hjust = c(0,0,0),
+    vjust = c(1,0,0)
+  ),
+   ggpubr::as_ggplot(cowplot::get_legend(
+     lm.forest(glm.plot.dat.all_main_analysis, title="",colourpal=forestpal) +
+      theme(legend.position = c(0.6,0.5),
+            legend.direction = "horizontal",
+            legend.box = "horizontal",
+            legend.box.just = "centre",
+            legend.title = element_blank(),
+            legend.text = element_text(size = plot_text_size),
+            panel.background = element_rect(fill = "white", colour = NA),
+            plot.background = element_rect(fill = "white", colour = NA)) +
+      guides(color = guide_legend(order = 1, reverse = T, nrow=2, byrow=T))
+  )),
+  ncol= 1,
+  nrow = 2,
+  rel_heights = c(1, 0.05)
+)
+
+foresplot_all_final_models_adj_main_analysis
+```
+
+```{r save final main analysis results forestplot adjusted, echo=FALSE}
+
+# Initialize file path
+forestplot_main_file_path= paste0(figure_path, "/forestplot_final_model_adj_main_analysis_", Sys.Date(), ".jpeg")
+png(height=1250, width=1000, file=forestplot_main_file_path, type = "cairo")
+
+# Your function to plot image goes here
+foresplot_all_final_models_adj_main_analysis
+
+# Close
+dev.off()
+
+
+## Code below saves with a black background around the plot legend
+# ggsave(paste0("forestplot_final_model_adj_main_analysis_", Sys.Date(), ".jpeg"),
+#        path = figure_path,
+#        plot = foresplot_all_final_models_adj_main_analysis,
+#        width = 12,
+#        height = 14,
+#        dpi = 150,
+#        units = "in")
+```
+
+## Table: Unadjusted + final model results
+
+```{r format final GLM output table for main analysis, include=FALSE}
+full.glm.all.results_for_table_main_analysis <- glm.plot.dat.all_main_analysis %>% 
+  mutate(
+    RowLabels = fct_recode(
+      .f = RowLabels,
+      "Family history: Anxiety/depressive disorder" = "Family history: \nAnxiety/depressive disorder",
+      "Family history: Other mental health disorder" = "Family history: \nOther mental health disorder",
+      "Self-reported anxiety/depressive disorder diagnosis" = "Anxiety/depressive disorder \ndiagnosis",
+      "Other self-reported mental health diagnosis" = "Other mental health \ndiagnosis",
+      "Current depressive symptoms (PHQ9)" = "Current depressive \nsymptoms",
+      "Current anxiety symptoms (GAD7)" = "Current anxiety \nsymptoms"
+      ),
+    "adjusted.p.value" =
+           p.adjust(p.value, method = "fdr"),
+    "sig.thresholds" =
+      case_when(
+        adjusted.p.value <= 0.001 ~ "***",
+        adjusted.p.value <= 0.01 ~ "**",
+        adjusted.p.value <= 0.05 ~ "*",
+        adjusted.p.value > 0.05 ~ ""
+      ),
+    Value = 
+      paste0(
+        format(round(estimate, 2), nsmall = 2),
+        sig.thresholds,
+        " (", 
+        format(round(LowerBound, 2), nsmall = 2),
+        ", ",
+        format(round(UpperBound, 2), nsmall = 2),
+        ")"
+      )
+  ) %>% 
+  select(Variable = RowLabels,
+         Group,
+         Value) %>% 
+  pivot_wider(names_from = Group,
+              values_from = Value)
+
+full.glm.all.results_for_table_main_analysis
+```
+
+```{r format unadjusted GLM outcome1 tables for main analysis, include=FALSE}
+outcome1_unadjusted_main_analysis <- rbind(outcome1_sociodemographic_reg_stats,
+                            outcome1_trauma_reg_stats,
+                            outcome1_clinical_reg_stats) %>%
+  mutate(
+    "sig.thresholds" =
+      case_when(
+        as.numeric(`adjusted p value`) <= 0.001 ~ "***",
+        as.numeric(`adjusted p value`) <= 0.01 ~ "**",
+        as.numeric(`adjusted p value`) <= 0.05 ~ "*",
+        as.numeric(`adjusted p value`) > 0.05 ~ ""
+      ),
+    Value = 
+      paste0(
+        format(OR, nsmall=2),
+        sig.thresholds,
+        " (", 
+        `95% CI`,
+        ")"
+      )
+  ) %>% 
+  select(
+    "Variable" = "Independent variable",
+    "Anx-anx (vs Anx) unadjusted models OR (95% CI)" = "Value"
+  ) %>% 
+  filter(
+    Variable != "Intercept"
+  )
+
+outcome1_unadjusted_main_analysis
+```
+
+```{r format unadjusted GLM outcome2 tables for main analysis, include=FALSE}
+outcome2_unadjusted_main_analysis <- rbind(outcome2_sociodemographic_reg_stats,
+                            outcome2_trauma_reg_stats,
+                            outcome2_clinical_reg_stats) %>%
+  mutate(
+    "sig.thresholds" =
+      case_when(
+        as.numeric(`adjusted p value`) <= 0.001 ~ "***",
+        as.numeric(`adjusted p value`) <= 0.01 ~ "**",
+        as.numeric(`adjusted p value`) <= 0.05 ~ "*",
+        as.numeric(`adjusted p value`) > 0.05 ~ ""
+      ),
+    Value = 
+      paste0(
+        format(OR, nsmall=2),
+        sig.thresholds,
+        " (", 
+        `95% CI`,
+        ")"
+      )
+  ) %>% 
+  select(
+    "Variable" = "Independent variable",
+    "Anx-MDD (vs Anx) unadjusted models OR (95% CI)" = "Value"
+  ) %>% 
+  filter(
+    Variable != "Intercept"
+  )
+
+outcome2_unadjusted_main_analysis
+```
+
+```{r format unadjusted GLM outcome3 tables for main analysis, include=FALSE}
+outcome3_unadjusted_main_analysis <- rbind(outcome3_sociodemographic_reg_stats,
+                            outcome3_trauma_reg_stats,
+                            outcome3_clinical_reg_stats) %>%
+  mutate(
+    "sig.thresholds" =
+      case_when(
+        as.numeric(`adjusted p value`) <= 0.001 ~ "***",
+        as.numeric(`adjusted p value`) <= 0.01 ~ "**",
+        as.numeric(`adjusted p value`) <= 0.05 ~ "*",
+        as.numeric(`adjusted p value`) > 0.05 ~ ""
+      ),
+    Value = 
+      paste0(
+        format(OR, nsmall=2),
+        sig.thresholds,
+        " (", 
+        `95% CI`,
+        ")"
+      )
+  ) %>%
+  select(
+    "Variable" = "Independent variable",
+    "Anx-anx (vs Anx-MDD) unadjusted models OR (95% CI)" = "Value"
+  ) %>% 
+  filter(
+    Variable != "Intercept"
+  )
+
+outcome3_unadjusted_main_analysis
+```
+
+```{r format unadjusted GLM outcome4 tables for main analysis, include=FALSE}
+outcome4_unadjusted_main_analysis <- rbind(outcome4_sociodemographic_reg_stats,
+                            outcome4_trauma_reg_stats,
+                            outcome4_clinical_reg_stats) %>% 
+  mutate(
+    "sig.thresholds" =
+      case_when(
+        as.numeric(`adjusted p value`) <= 0.001 ~ "***",
+        as.numeric(`adjusted p value`) <= 0.01 ~ "**",
+        as.numeric(`adjusted p value`) <= 0.05 ~ "*",
+        as.numeric(`adjusted p value`) > 0.05 ~ ""
+      ),
+    Value = 
+      paste0(
+        OR,#format(OR, nsmall=2), #Removed format function as it adds a space for some reason
+        sig.thresholds,
+        " (", 
+        `95% CI`,
+        ")"
+      )
+  ) %>%
+  select(
+    "Variable" = "Independent variable",
+    "Anx-MDD (vs MDD only) unadjusted models OR (95% CI)" = "Value"
+  ) %>% 
+  filter(
+    Variable != "Intercept"
+  )
+
+outcome4_unadjusted_main_analysis
+```
+
+```{r merge unadjusted and final GLM output for main analysis, echo=FALSE}
+glm.all.results_main_analysis <- list(outcome1_unadjusted_main_analysis,
+                                                           outcome2_unadjusted_main_analysis,
+                                                           outcome3_unadjusted_main_analysis,
+                                                           outcome4_unadjusted_main_analysis,
+                                                           full.glm.all.results_for_table_main_analysis) %>%
+  reduce(left_join, by = c("Variable")) %>% 
+  rename(
+    "Anx-anx (vs Anx) full model OR (95% CI)" = "anxiety-anxiety (vs single anxiety)",
+    "Anx-MDD (vs Anx) full model OR (95% CI)" = "anxiety-MDD (vs single anxiety)",
+    "Anx-anx (vs Anx-MDD) full model OR (95% CI)" = "anxiety-anxiety (vs anxiety-MDD)",
+    "Anx-MDD (vs MDD only) full model OR (95% CI)" = "anxiety-MDD (vs MDD only)"
+  ) %>% 
+  # relocate("Anx-anx (vs Anx) full model OR (95% CI)", .before = "Anx-MDD (vs Anx) full model OR (95% CI)") %>% 
+  # relocate("Anx-anx (vs Anx) unadjusted models OR (95% CI)", .before = "Anx-MDD (vs Anx) unadjusted models OR (95% CI)") %>% 
+  mutate("Variable" = fct_relevel(
+    .f = Variable,
+    Variable_ordered_results
+    )
+  ) %>% 
+  arrange(Variable)
+
+#glm.all.results_main_analysis
+kable(glm.all.results_main_analysis)
+```
+
+
+
+
+
+
+  
+
+  
+
+
+# Analysis 2a
+Includes all variables from main analysis + family history of mental health disorder variables  
+
+## Logistic regressions
+
+Model Ns dataframe
+```{r create empty model Ns dataframe for analysis 2a, include=FALSE}
+#Set up the column labels and column names for the Ns datasets for the main analysis models
+model_Ns_labels_analysis_2a <- c("Sociodemographic", "Trauma", "Clinical", "Family history", "Full")
+model_Ns_dataframe_analysis_2a <- setNames(data.frame(matrix(ncol = 3, nrow = 5)), c("Outcome", "Model", 
+                                                                                  "N included"#, "N excluded"
+                                                                                  ))
+```
+
+### Outcome 1
+*Family history model, unadjusted*  
+Includes family history variables
+```{r outcome1 family history model (analysis 2a) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome1_family_history_estimates <- model.estimates(outcome = "single_anxiety_vs_anxiety_anxiety_numeric",
+                                             variables = family_history_variables,
+                                             data_set = "dat_outcome1")
+#kable(outcome1_family_history_estimates)
+#outcome1_family_history_estimates
+
+# Regression diagnostic statistics
+outcome1_family_history_reg_stats <- model.reg.stats(outcome = "single_anxiety_vs_anxiety_anxiety_numeric",
+                                             variables = family_history_variables,
+                                             data_set = "dat_outcome1")
+kable(outcome1_family_history_reg_stats)
+#outcome1_family_history_reg_stats
+```
+
+*Full model*
+Excludes genetic variables
+```{r outcome1 full model for analysis 2a, echo=FALSE}
+# Regression coefficients
+outcome1_all_factors_estimates_analysis_2a <- model.estimates(outcome = "single_anxiety_vs_anxiety_anxiety_numeric",
+                                                              variables = all_explanatory_variables_analysis_2a,
+                                                              data_set = "dat_outcome1")
+#kable(outcome1_all_factors_estimates_analysis_2a)
+#outcome1_all_factors_estimates_analysis_2a
+
+# Regression diagnostic statistics
+outcome1_all_factors_reg_stats_analysis_2a <- model.reg.stats(outcome = "single_anxiety_vs_anxiety_anxiety_numeric",
+                                                              variables = all_explanatory_variables_analysis_2a,
+                                                              data_set = "dat_outcome1")
+kable(outcome1_all_factors_reg_stats_analysis_2a)
+#outcome1_all_factors_reg_stats_analysis_2a
+```
+
+```{r vif analysis 2a outcome1}
+vif_analysis_2a_outcome1 <- model.vif(
+  outcome = "single_anxiety_vs_anxiety_anxiety_numeric",
+  variables = all_explanatory_variables_analysis_2a,
+  data_set = "dat_outcome1")
+
+vif_analysis_2a_outcome1 
+```
+
+*outcome1 model Ns*  
+Number of participants included in each model for analysis 2a
+
+```{r create empty model Ns dataframe for analysis 2a, include=FALSE}
+#Set up the column labels and column names for the Ns datasets for the main analysis models
+model_Ns_labels_main_analysis <- c("Sociodemographic", "Trauma", "Clinical", "Family history", "Full")
+model_Ns_dataframe_main_analysis <- setNames(data.frame(matrix(ncol = 3, nrow = 5)), c("Outcome", "Model", 
+                                                                                  "N included"#, "N excluded"
+                                                                                  ))
+```
+
+```{r outcome1 model Ns for analysis 2a, echo=FALSE}
+#Family history model
+## N included
+outcome1_family_history_N <- dat_outcome1 %>% 
+    select(family_history_variables) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Full model (analysis 2a)
+## N included
+outcome1_full_analysis_2a_N <- dat_outcome1 %>% 
+    select(all_explanatory_variables_analysis_2a) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Full model (analysis 2b)
+## N included
+outcome1_full_analysis_2b_N <- dat_outcome1 %>% 
+    select(all_explanatory_variables_analysis_2b) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Dataframe with all values
+outcome1_all_models_included_analysis_2a <- c(outcome1_sociodemographic_N,
+                                              outcome1_trauma_N,
+                                              outcome1_family_history_N, 
+                                              outcome1_clinical_N,  
+                                              outcome1_full_analysis_2a_N)
+
+outcome1_model_Ns_analysis_2a <- model_Ns_dataframe_analysis_2a %>% 
+  mutate(
+    Outcome = "anxiety-anxiety (vs single anxiety)",
+    Model = model_Ns_labels_analysis_2a,
+    `N included` = outcome1_all_models_included_analysis_2a
+  )
+kable(outcome1_model_Ns_analysis_2a)
+```
+
+### Outcome 2
+The unadjusted sociodemographic and clinical model results are the same as the main analysis.  
+
+*Family history model, unadjusted*  
+Includes family history variables
+```{r outcome2 family_history model (analysis 2a) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome2_family_history_estimates <- model.estimates(outcome = "single_anxiety_vs_anxiety_depression_numeric",
+                                             variables = family_history_variables,
+                                             data_set = "dat_outcome2")
+#kable(outcome2_family_history_estimates)
+#outcome2_family_history_estimates
+
+# Regression diagnostic statistics
+outcome2_family_history_reg_stats <- model.reg.stats(outcome = "single_anxiety_vs_anxiety_depression_numeric",
+                                             variables = family_history_variables,
+                                             data_set = "dat_outcome2")
+kable(outcome2_family_history_reg_stats)
+#outcome2_family_history_reg_stats
+```
+
+*Full model*  
+Includes family history variables  
+Excludes genetic variables
+```{r outcome2 full model (analysis 2a) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome2_all_factors_estimates_analysis_2a <- model.estimates(outcome = "single_anxiety_vs_anxiety_depression_numeric",
+                                                              variables = all_explanatory_variables_analysis_2a,
+                                                              data_set = "dat_outcome2")
+#kable(outcome2_all_factors_estimates)
+#outcome2_all_factors_estimates_analysis_2a
+
+# Regression diagnostic statistics
+outcome2_all_factors_reg_stats_analysis_2a <- model.reg.stats(outcome = "single_anxiety_vs_anxiety_depression_numeric",
+                                                              variables = all_explanatory_variables_analysis_2a,
+                                                              data_set = "dat_outcome2")
+kable(outcome2_all_factors_reg_stats_analysis_2a)
+#outcome2_all_factors_reg_stats_analysis_2a
+```
+
+```{r vif analysis 2a outcome2}
+vif_analysis_2a_outcome2 <- model.vif(
+  outcome = "single_anxiety_vs_anxiety_depression_numeric",
+  variables = all_explanatory_variables_analysis_2a,
+  data_set = "dat_outcome2")
+
+vif_analysis_2a_outcome2 
+```
+
+*outcome2 model Ns*  
+Number of participants included in each model
+```{r outcome2 model Ns for analysis 2a, echo=FALSE}
+
+#Family history model (analysis 2a)
+## N included
+outcome2_family_history_N <- dat_outcome2 %>% 
+    select(family_history_variables) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Full model (analysis 2a)
+## N included
+outcome2_full_analysis_2a_N <- dat_outcome2 %>% 
+    select(all_explanatory_variables_analysis_2a) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Dataframe with all values
+outcome2_all_models_included_analysis_2a <- c(outcome2_sociodemographic_N,
+                                                outcome2_trauma_N,
+                                                outcome2_clinical_N,   
+                                                outcome2_family_history_N,
+                                                outcome2_full_analysis_2a_N
+                                                )
+
+outcome2_model_Ns_analysis_2a <- model_Ns_dataframe_analysis_2a %>% 
+  mutate(
+    Outcome = "anxiety-MDD (vs single anxiety)",
+    Model = model_Ns_labels_analysis_2a,
+    `N included` = outcome2_all_models_included_analysis_2a
+  )
+#kable(outcome2_model_Ns_analysis_2a)
+outcome2_model_Ns_analysis_2a
+```
+
+### Outcome 3
+
+*Family history model, unadjusted*  
+Includes family history
+```{r outcome3 family_history model (analysis 2a) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome3_family_history_estimates <- model.estimates(outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+                                             variables = family_history_variables,
+                                             data_set = "dat_outcome3")
+#kable(outcome3_family_history_estimates)
+#outcome3_family_history_estimates
+
+# Regression diagnostic statistics
+outcome3_family_history_reg_stats <- model.reg.stats(outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+                                             variables = family_history_variables,
+                                             data_set = "dat_outcome3")
+kable(outcome3_family_history_reg_stats)
+#outcome3_family_history_reg_stats
+```
+
+*Full model*  
+Includes family history  
+Excludes genetic variables  
+```{r outcome3 full model (analysis 2a), echo=FALSE}
+# Regression coefficients
+outcome3_all_factors_estimates_analysis_2a <- model.estimates(outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+                                                              variables = all_explanatory_variables_analysis_2a,
+                                                              data_set = "dat_outcome3")
+#kable(outcome3_all_factors_estimates_analysis_2a)
+#outcome3_all_factors_estimates_analysis_2a
+
+# Regression diagnostic statistics
+outcome3_all_factors_reg_stats_analysis_2a <- model.reg.stats(outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+                                                              variables = all_explanatory_variables_analysis_2a,
+                                                              data_set = "dat_outcome3")
+kable(outcome3_all_factors_reg_stats_analysis_2a)
+#outcome3_all_factors_reg_stats_analysis_2a
+```
+
+```{r vif analysis 2a outcome3}
+vif_analysis_2a_outcome3 <- model.vif(
+  outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+  variables = all_explanatory_variables_analysis_2a,
+  data_set = "dat_outcome3")
+
+vif_analysis_2a_outcome3 
+```
+
+*Outcome3 model Ns*  
+Number of participants included in each model
+```{r outcome3 model Ns for analysis 2a, echo=FALSE}
+
+#family_history model (analysis 2a)
+## N included
+outcome3_family_history_N <- dat_outcome3 %>% 
+    select(family_history_variables) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Full model (analysis 2a)
+## N included
+outcome3_full_analysis_2a_N <- dat_outcome3 %>% 
+    select(all_explanatory_variables_analysis_2a) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Dataframe with all values
+outcome3_all_models_included_analysis_2a <- c(outcome3_sociodemographic_N, 
+                                              outcome3_trauma_N,
+                                              outcome3_clinical_N,  
+                                              outcome3_family_history_N, 
+                                              outcome3_full_analysis_2a_N
+                                  )
+
+outcome3_model_Ns_analysis_2a <- model_Ns_dataframe_analysis_2a %>% 
+  mutate(
+    Outcome = "anxiety-anxiety (vs anxiety-MDD)",
+    Model = model_Ns_labels_analysis_2a,
+    `N included` = outcome3_all_models_included_analysis_2a
+  )
+kable(outcome3_model_Ns_analysis_2a)
+```
+
+### Outcome 4
+
+*Family history model, unadjusted * 
+Includes family history
+```{r outcome4 family_history model (analysis 2a) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome4_family_history_estimates <- model.estimates(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                             variables = family_history_variables,
+                                             data_set = "dat_outcome4")
+#kable(outcome4_family_history_estimates)
+#outcome4_family_history_estimates
+
+# Regression diagnostic statistics
+outcome4_family_history_reg_stats <- model.reg.stats(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                             variables = family_history_variables,
+                                             data_set = "dat_outcome4")
+kable(outcome4_family_history_reg_stats)
+#outcome4_family_history_reg_stats
+```
+
+*Full model*  
+Includes family history variables  
+Excludes genetic variables  
+```{r outcome4 full model (analysis 2a), echo=FALSE}
+# Regression coefficients
+outcome4_all_factors_estimates_analysis_2a <- model.estimates(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                                              variables = all_explanatory_variables_analysis_2a,
+                                                              data_set = "dat_outcome4")
+#kable(outcome4_all_factors_estimates_analysis_2a)
+#outcome4_all_factors_estimates_analysis_2a
+
+# Regression diagnostic statistics
+outcome4_all_factors_reg_stats_analysis_2a <- model.reg.stats(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                                              variables = all_explanatory_variables_analysis_2a,
+                                                              data_set = "dat_outcome4")
+kable(outcome4_all_factors_reg_stats_analysis_2a)
+#outcome4_all_factors_reg_stats_analysis_2a
+```
+
+```{r vif analysis 2a outcome4}
+vif_analysis_2a_outcome4 <- model.vif(
+  outcome = "single_depression_vs_anxiety_depression_numeric",
+  variables = all_explanatory_variables_analysis_2a,
+  data_set = "dat_outcome4")
+
+vif_analysis_2a_outcome4 
+```
+
+*Model Ns*
+
+```{r outcome4 model Ns for analysis 2a, echo=FALSE}
+#Family history model (analysis 2a)
+## N included
+outcome4_family_history_N <- dat_outcome4 %>% 
+    select(family_history_variables) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Full model (analysis 2a)
+## N included
+outcome4_full_analysis_2a_N <- dat_outcome4 %>% 
+    select(all_explanatory_variables_analysis_2a) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Dataframe with all values
+outcome4_all_models_included_analysis_2a <- c(outcome4_sociodemographic_N, 
+                                              outcome4_trauma_N, 
+                                              outcome4_clinical_N,
+                                              outcome4_family_history_N,
+                                              outcome4_full_analysis_2a_N)
+outcome4_model_Ns_analysis_2a <- model_Ns_dataframe_analysis_2a %>% 
+  mutate(
+    Outcome = "anxiety-anxiety (vs single anxiety)",
+    Model = model_Ns_labels_analysis_2a,
+    `N included` = outcome4_all_models_included_analysis_2a
+  )
+outcome4_model_Ns_analysis_2a
+```
+
+## Combined GLM model Ns table
+
+```{r Ns table for analysis 2a, echo=FALSE}
+Ns_analysis_2a <- rbind(
+  outcome1_model_Ns_analysis_2a,
+  outcome2_model_Ns_analysis_2a,
+  outcome3_model_Ns_analysis_2a,
+  outcome4_model_Ns_analysis_2a
+)
+kable(Ns_analysis_2a)
+```
+
+## Combined VIF table
+
+```{r vif table for analysis 2a, echo=FALSE}
+vif_analysis_2a <- list(
+  vif_analysis_2a_outcome1,
+  vif_analysis_2a_outcome2,
+  vif_analysis_2a_outcome3,
+  vif_analysis_2a_outcome4
+  ) %>% 
+  reduce(full_join, by = c("Variable")) %>% 
+  rename(
+    "Anxiety-anxiety (vs single anxiety)" = "single_anxiety_vs_anxiety_anxiety_numeric",
+    "Anxiety-MDD (vs single anxiety)" = "single_anxiety_vs_anxiety_depression_numeric",
+    "Anxiety-anxiety (vs anxiety-MDD)" = "anxiety_depression_vs_anxiety_anxiety_numeric",
+    "Anxiety-MDD (vs MDD only)" = "single_depression_vs_anxiety_depression_numeric"
+  ) %>% 
+  mutate(
+        "Variable" = recode_factor(
+          Variable,
+          "dem.age_adjusted" = "Age",
+          "dem.sex" = "Sex",
+          "dem.highest_education_ordered_collapsed" = "Highest education",
+          "dem.ethnicity_collapsed" = "Ethnicity",
+          "mhfh.anxiety_or_depression_numeric" = "Family history: Anxiety/depressive disorder",
+          "mhfh.other_disorders_numeric" = "Family history: Other mental health disorder",
+          "cts.any_maltreatment_binary" = "Childhood trauma",
+          "ats.partner_abuse_binary" = "Adult trauma",
+          "ats.catastrophic_trauma_binary" = "Catastrophic trauma",
+          "mhd.anxiety_depression_numeric" = "Self-reported anxiety/depressive disorder diagnosis",
+          "mhd.other_diagnoses_numeric" = "Other self-reported mental health diagnosis",
+          "min_age_of_onset_adjusted" = "Age of onset",
+          "max_recurrence" = "Recurrence",
+          "phq9.sum_score" = "Current depressive symptoms (PHQ9)",
+          "gad7.sum_score" = "Current anxiety symptoms (GAD7)",
+          "anxietyPRS_z" = "Anxiety PRS",
+          "depression05_PRS_z" = "MDD PRS",
+          "neuroticismPRS_z" = "Neuroticism PRS",
+          "adhdPRS_z" = "ADHD PRS",
+          "autismPRS_z" = "Autism PRS",
+          "schizophreniaPRS_z" = "Schizophrenia PRS",
+          "educationPRS_z" = "Educational attainment PRS"))
+kable(vif_analysis_2a)
+```
+
+## Forest plots
+
+```{r functions required in book for global assignments without genetics, echo=FALSE}
+glmoutput_format_analysis_2a <- function(lmobject, group, dfname){
+  
+  ## Row labels
+  independent.variables <- c("intercept",
+                             "Age",
+                             "Female",
+                             "University degree",
+                             "A-levels or equivalent",
+                             "GCSEs or equivalent",
+                             "White",
+                             "Childhood trauma",
+                             "Adult trauma",
+                             "Catastrophic trauma",
+                             "Anxiety/depressive disorder \ndiagnosis",
+                             "Other mental health \ndiagnosis",
+                             "Age of onset",
+                             "Recurrence",
+                             "Current depressive \nsymptoms",
+                             "Current anxiety \nsymptoms",
+                             "Family history: \nAnxiety/depressive disorder",
+                             "Family history: \nOther mental health disorder"
+                             #genetic factors here
+                             )
+                             
+  ## categories to facet on 
+  ### Option 1: Overarching variable categories
+  categories <- c("Intercept",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Trauma",
+                  "Trauma",
+                  "Trauma",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Family history",
+                  "Family history"
+                  )
+  
+  ## Disorder dimension  
+  groups <- c(group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group
+              )
+  
+  # create data frame
+  df <- lmobject
+  
+  # add row labels
+  df$RowLabels <- independent.variables
+  
+  # Add category labels
+  df$Categories <- categories
+  
+  # Add group labels
+  df$Group <- groups
+  
+  # calculate upper and lower confidence intervals
+  ##logistic regression results include CI - just rename
+  df <- df %>%
+    rename(
+      "LowerBound" = "conf.low",
+      "UpperBound" = "conf.high")
+  
+  # drop intercept row
+  df <- df[(df$RowLabels != 'intercept'),]
+  
+  # order factors
+  df$RowLabels <- factor(df$RowLabels, levels = rev(independent.variables))   ## unadjusted rows
+  df$Categories <- factor(df$Categories, levels = unique(categories))   ## categories
+  
+  
+  # assign dataframe to global environment
+  assign(dfname, df, envir = .GlobalEnv)
+  
+}
+
+
+model.glm.form_analysis_2a <- function(outcome, data_set) {
+  
+  # define the variable name of the dependent variable
+  dependent.variable <- outcome
+  # define the independent variables
+  independent.variables <- all_explanatory_variables_analysis_2a
+  # create the formula
+  glm.formula <- as.formula(paste(dependent.variable, paste(independent.variables, collapse=" + "), sep=" ~ "))
+  
+  # run the glm
+  assign(paste0(outcome,".glmformula"),
+         glm(formula = glm.formula,
+             data = get(data_set),
+             family = "binomial"
+         )
+  )
+
+  assign(
+    paste0(outcome,"oddsratios.glmformula_analysis_2a"),
+    tidy(
+      get(paste0(outcome,".glmformula")),
+      exponentiate = T,
+      conf.int = T
+    ))
+  
+  return(get(paste0(outcome,"oddsratios.glmformula_analysis_2a")))
+}
+
+```
+
+```{r run analysis 2a models for all forest plot items, echo=FALSE}
+
+all.outcome1.glm_analysis_2a <-  model.glm.form_analysis_2a("single_anxiety_vs_anxiety_anxiety_numeric",
+                                  "dat_outcome1")
+
+all.outcome2.glm_analysis_2a <-  model.glm.form_analysis_2a("single_anxiety_vs_anxiety_depression_numeric",
+                                  "dat_outcome2")
+
+all.outcome3.glm_analysis_2a <-  model.glm.form_analysis_2a("anxiety_depression_vs_anxiety_anxiety_numeric",
+                                  "dat_outcome3")
+
+all.outcome4.glm_analysis_2a <-  model.glm.form_analysis_2a("single_depression_vs_anxiety_depression_numeric",
+                                  "dat_outcome4")
+```
+
+```{r generate analysis 2a datasets for all plots, echo=FALSE}
+# Results grouped by dependent variable
+glmoutput_format_analysis_2a(all.outcome1.glm_analysis_2a,"anxiety-anxiety (vs single anxiety)", "outcome1.glm.for.plot_analysis_2a")
+
+glmoutput_format_analysis_2a(all.outcome2.glm_analysis_2a,"anxiety-MDD (vs single anxiety)", "outcome2.glm.for.plot_analysis_2a")
+
+glmoutput_format_analysis_2a(all.outcome3.glm_analysis_2a,"anxiety-anxiety (vs anxiety-MDD)", "outcome3.glm.for.plot_analysis_2a")
+
+glmoutput_format_analysis_2a(all.outcome4.glm_analysis_2a,"anxiety-MDD (vs MDD only)", "outcome4.glm.for.plot_analysis_2a")
+
+```
+
+```{r merge analysis 2a datasets for different combinations, echo=FALSE}
+glm.plot.dat.all_analysis_2a <- rbind(outcome1.glm.for.plot_analysis_2a,
+                      outcome2.glm.for.plot_analysis_2a,
+                      outcome3.glm.for.plot_analysis_2a,
+                      outcome4.glm.for.plot_analysis_2a)
+```
+
+```{r order analysis 2a group variable for plotting, echo=FALSE}
+glm.plot.dat.all_analysis_2a$Group <- 
+  fct_relevel(glm.plot.dat.all_analysis_2a$Group,
+              "anxiety-MDD (vs MDD only)",
+              "anxiety-anxiety (vs anxiety-MDD)",
+              "anxiety-anxiety (vs single anxiety)",
+              "anxiety-MDD (vs single anxiety)"
+              )
+```
+
+#### plot with adjusted upperBound
+
+```{r forest plot adjusted UpperBound for full models for analysis 2a, fig.height=14, fig.width=12, dpi=120, echo=FALSE}
+
+plot_text_size=16
+
+foresplot_all_final_models_adj_analysis_2a <- plot_grid(
+  plot_grid(
+    lm.forest(glm.plot.dat.all_analysis_2a %>% 
+                filter(Categories=="Sociodemographic") %>% 
+                mutate(UpperBound =
+                         case_when(
+                           UpperBound <= 3 ~ UpperBound,
+                           UpperBound > 3 ~ 3
+                         )), 
+              title="",
+              colourpal=forestpal,
+              uplim=3),
+    lm.forest(glm.plot.dat.all_analysis_2a %>% 
+                filter(Categories=="Trauma") %>% 
+                mutate(UpperBound =
+                         case_when(
+                           UpperBound <= 3 ~ UpperBound,
+                           UpperBound > 3 ~ 3
+                         )), 
+              title="",
+              colourpal=forestpal,
+              uplim=3),
+    lm.forest(glm.plot.dat.all_analysis_2a %>% 
+                filter(Categories=="Clinical") %>% 
+                mutate(UpperBound =
+                         case_when(
+                           UpperBound <= 3 ~ UpperBound,
+                           UpperBound > 3 ~ 3
+                         )), 
+              title="",
+              colourpal=forestpal,
+              uplim=3),
+      lm.forest(glm.plot.dat.all_analysis_2a %>% 
+                filter(Categories=="Family history") %>% 
+                mutate(UpperBound =
+                         case_when(
+                           UpperBound <= 3 ~ UpperBound,
+                           UpperBound > 3 ~ 3
+                         )), 
+              title="",
+              colourpal=forestpal,
+              uplim=3) +
+      theme(
+        axis.title.x = element_text(size = plot_text_size),
+        axis.text.x = element_text(size = plot_text_size)),
+    align = "v",
+    nrow = 4,
+    rel_heights = c(8/26, 4/26, 9/26, 5/26),
+    hjust = c(0,0,0,0),
+    vjust = c(1,0,0,0)
+  ),
+   ggpubr::as_ggplot(cowplot::get_legend(
+     lm.forest(glm.plot.dat.all_analysis_2a, title="",colourpal=forestpal) +
+      theme(legend.position = c(0.6,0.5),
+            legend.direction = "horizontal",
+            legend.box = "horizontal",
+            legend.box.just = "centre",
+            legend.title = element_blank(),
+            legend.text = element_text(size = plot_text_size)) +
+      guides(color = guide_legend(order = 1, reverse = T, nrow=2, byrow=T))
+  )),
+  ncol= 1,
+  nrow = 2,
+  rel_heights = c(1, 0.05)
+)
+
+foresplot_all_final_models_adj_analysis_2a
+```
+
+```{r save final analysis 2a model results forestplot adjusted, echo=FALSE}
+ggsave(paste0("forestplot_final_model_adj_DEPR05_analysis_2a_", Sys.Date(), ".jpeg"),
+       path = figure_path,
+       plot = foresplot_all_final_models_adj_analysis_2a,
+       width = 12,
+       height = 14,
+       dpi = 150,
+       units = "in")
+```
+
+## Table: Unadjusted + final model results
+
+```{r format final GLM output table for analysis 2a, include=FALSE}
+full.glm.all.results_for_table_analysis_2a <- glm.plot.dat.all_analysis_2a %>% 
+  mutate(
+    RowLabels = fct_recode(
+      .f = RowLabels,
+      "Family history: Anxiety/depressive disorder" = "Family history: \nAnxiety/depressive disorder",
+      "Family history: Other mental health disorder" = "Family history: \nOther mental health disorder",
+      "Self-reported anxiety/depressive disorder diagnosis" = "Anxiety/depressive disorder \ndiagnosis",
+      "Other self-reported mental health diagnosis" = "Other mental health \ndiagnosis",
+      "Current depressive symptoms (PHQ9)" = "Current depressive \nsymptoms",
+      "Current anxiety symptoms (GAD7)" = "Current anxiety \nsymptoms"
+      ),
+    "adjusted.p.value" =
+           p.adjust(p.value, method = "fdr"),
+    "sig.thresholds" =
+      case_when(
+        adjusted.p.value <= 0.001 ~ "***",
+        adjusted.p.value <= 0.01 ~ "**",
+        adjusted.p.value <= 0.05 ~ "*",
+        adjusted.p.value > 0.05 ~ ""
+      ),
+    Value = 
+      paste0(
+        format(round(estimate, 2), nsmall = 2),
+        sig.thresholds,
+        " (", 
+        format(round(LowerBound, 2), nsmall = 2),
+        ", ",
+        format(round(UpperBound, 2), nsmall = 2),
+        ")"
+      )
+  ) %>% 
+  select(Variable = RowLabels,
+         Group,
+         Value) %>% 
+  pivot_wider(names_from = Group,
+              values_from = Value)
+
+full.glm.all.results_for_table_analysis_2a
+```
+
+```{r format unadjusted GLM outcome1 tables for analysis 2a, include=FALSE}
+outcome1_unadjusted_analysis_2a <- rbind(outcome1_sociodemographic_reg_stats,
+                                         outcome1_trauma_reg_stats,
+                                         outcome1_clinical_reg_stats,
+                                         outcome1_family_history_reg_stats) %>%
+  mutate(
+    "sig.thresholds" =
+      case_when(
+        as.numeric(`adjusted p value`) <= 0.001 ~ "***",
+        as.numeric(`adjusted p value`) <= 0.01 ~ "**",
+        as.numeric(`adjusted p value`) <= 0.05 ~ "*",
+        as.numeric(`adjusted p value`) > 0.05 ~ ""
+      ),
+    Value = 
+      paste0(
+        format(OR, nsmall=2),
+        sig.thresholds,
+        " (", 
+        `95% CI`,
+        ")"
+      )
+  ) %>% 
+  select(
+    "Variable" = "Independent variable",
+    "Anx-anx (vs Anx) unadjusted models OR (95% CI)" = "Value"
+  ) %>% 
+  filter(
+    Variable != "Intercept"
+  )
+
+outcome1_unadjusted_analysis_2a
+```
+
+```{r format unadjusted GLM outcome2 tables for analysis 2a, include=FALSE}
+outcome2_unadjusted_analysis_2a <- rbind(outcome2_sociodemographic_reg_stats,
+                                         outcome2_trauma_reg_stats,
+                                         outcome2_clinical_reg_stats,
+                                         outcome2_family_history_reg_stats) %>%
+  mutate(
+    "sig.thresholds" =
+      case_when(
+        as.numeric(`adjusted p value`) <= 0.001 ~ "***",
+        as.numeric(`adjusted p value`) <= 0.01 ~ "**",
+        as.numeric(`adjusted p value`) <= 0.05 ~ "*",
+        as.numeric(`adjusted p value`) > 0.05 ~ ""
+      ),
+    Value = 
+      paste0(
+        OR,#format(OR, nsmall=2),
+        sig.thresholds,
+        " (", 
+        `95% CI`,
+        ")"
+      )
+  ) %>% 
+  select(
+    "Variable" = "Independent variable",
+    "Anx-MDD (vs Anx) unadjusted models OR (95% CI)" = "Value"
+  ) %>% 
+  filter(
+    Variable != "Intercept"
+  )
+
+outcome2_unadjusted_analysis_2a
+```
+
+```{r format unadjusted GLM outcome3 tables for analysis 2a, include=FALSE}
+outcome3_unadjusted_analysis_2a <- rbind(outcome3_sociodemographic_reg_stats,
+                                         outcome3_trauma_reg_stats,
+                                         outcome3_clinical_reg_stats,
+                                         outcome3_family_history_reg_stats) %>%
+  mutate(
+    "sig.thresholds" =
+      case_when(
+        as.numeric(`adjusted p value`) <= 0.001 ~ "***",
+        as.numeric(`adjusted p value`) <= 0.01 ~ "**",
+        as.numeric(`adjusted p value`) <= 0.05 ~ "*",
+        as.numeric(`adjusted p value`) > 0.05 ~ ""
+      ),
+    Value = 
+      paste0(
+        format(OR, nsmall=2),
+        sig.thresholds,
+        " (", 
+        `95% CI`,
+        ")"
+      )
+  ) %>% 
+  select(
+    "Variable" = "Independent variable",
+    "Anx-anx (vs Anx-MDD) unadjusted models OR (95% CI)" = "Value"
+  ) %>% 
+  filter(
+    Variable != "Intercept"
+  )
+
+outcome3_unadjusted_analysis_2a
+```
+
+```{r format unadjusted GLM outcome4 tables for analysis 2a, include=FALSE}
+outcome4_unadjusted_analysis_2a <- rbind(outcome4_sociodemographic_reg_stats,
+                                         outcome4_trauma_reg_stats,
+                                         outcome4_clinical_reg_stats,
+                                         outcome4_family_history_reg_stats) %>% 
+  mutate(
+    "sig.thresholds" =
+      case_when(
+        as.numeric(`adjusted p value`) <= 0.001 ~ "***",
+        as.numeric(`adjusted p value`) <= 0.01 ~ "**",
+        as.numeric(`adjusted p value`) <= 0.05 ~ "*",
+        as.numeric(`adjusted p value`) > 0.05 ~ ""
+      ),
+    Value = 
+      paste0(
+        OR,#format(OR, nsmall=2),
+        sig.thresholds,
+        " (", 
+        `95% CI`,
+        ")"
+      )
+  ) %>% 
+  select(
+    "Variable" = "Independent variable",
+    "Anx-MDD (vs MDD only) unadjusted models OR (95% CI)" = "Value"
+  ) %>% 
+  filter(
+    Variable != "Intercept"
+  )
+
+outcome4_unadjusted_analysis_2a
+```
+
+### Unadjusted results for vulnerability factors only
+The vulnerability model is the only unadjusted analysis that has updated results
+```{r merge unadjusted GLM output table for analysis 2a, echo=FALSE}
+glm.unadjusted.vulnerability.table_analysis_2a <- list(outcome1_unadjusted_analysis_2a,
+                                                       outcome2_unadjusted_analysis_2a,
+                                                       outcome3_unadjusted_analysis_2a,
+                                                       outcome4_unadjusted_analysis_2a) %>%
+  reduce(left_join, by = c("Variable")) %>% 
+  filter(Variable == "Family history: Anxiety/depressive disorder" |
+           Variable == "Family history: Other mental health disorder"
+           ) %>% 
+  # relocate("Anx-anx (vs Anx) unadjusted models OR (95% CI)", .before = "Anx-MDD (vs Anx) unadjusted models OR (95% CI)") %>% 
+  mutate("Variable" = fct_relevel(
+    .f = Variable,
+    Variable_ordered_results
+    )
+  ) %>% 
+  arrange(Variable)
+
+#glm.unadjusted.vulnerability.table_analysis_2a
+kable(glm.unadjusted.vulnerability.table_analysis_2a)
+```
+
+### Unadjusted and full model results
+
+```{r merge unadjusted and all factors GLM output table for analysis 2a, echo=FALSE}
+glm.unadjusted.table.all_analysis_2a <- list(outcome1_unadjusted_analysis_2a,
+                                             outcome2_unadjusted_analysis_2a,
+                                             outcome3_unadjusted_analysis_2a,
+                                             outcome4_unadjusted_analysis_2a,
+                                             full.glm.all.results_for_table_analysis_2a) %>%
+  reduce(left_join, by = c("Variable")) %>% 
+  rename(
+    "Anx-anx (vs Anx) full model OR (95% CI)" = "anxiety-anxiety (vs single anxiety)",
+    "Anx-MDD (vs Anx) full model OR (95% CI)" = "anxiety-MDD (vs single anxiety)",
+    "Anx-anx (vs Anx-MDD) full model OR (95% CI)" = "anxiety-anxiety (vs anxiety-MDD)",
+    "Anx-MDD (vs MDD only) full model OR (95% CI)" = "anxiety-MDD (vs MDD only)"
+  ) %>% 
+   # relocate("Anx-anx (vs Anx) full model OR (95% CI)", .before = "Anx-MDD (vs Anx) full model OR (95% CI)") %>% 
+   # relocate("Anx-anx (vs Anx) unadjusted models OR (95% CI)", .before = "Anx-MDD (vs Anx) unadjusted models OR (95% CI)") %>% 
+  mutate("Variable" = fct_relevel(
+    .f = Variable,
+    Variable_ordered_results
+    )
+  ) %>% 
+  arrange(Variable)
+
+#glm.unadjusted.table.all_analysis_2a
+kable(glm.unadjusted.table.all_analysis_2a)
+```
+  
+
+# Analysis 2b
+Includes all variables from main analysis + genetic factors  
+
+## Logistic regressions
+
+Model Ns dataframe
+```{r create empty model Ns dataframe for analysis 2b, include=FALSE}
+#Set up the column labels and column names for the Ns datasets for the main analysis models
+model_Ns_labels_analysis_2b <- c("Sociodemographic", "Trauma", "Clinical", "Genetic", "Full")
+model_Ns_dataframe_analysis_2b <- setNames(data.frame(matrix(ncol = 3, nrow = 5)), c("Outcome", "Model", 
+                                                                                  "N included"#, "N excluded"
+                                                                                  ))
+```
+
+### Outcome 1
+*Genetic model, unadjusted*
+```{r outcome1 genetic model (analysis 2b) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome1_genetic_estimates <- model.estimates(outcome = "single_anxiety_vs_anxiety_anxiety_numeric",
+                                              variables = genetic_variables_batch_pcs,
+                                              data_set = "dat_outcome1")
+#kable(outcome1_genetic_estimates)
+#outcome1_genetic_estimates
+
+# Regression diagnostic statistics
+outcome1_genetic_reg_stats <- model.reg.stats(outcome = "single_anxiety_vs_anxiety_anxiety_numeric",
+                                              variables = genetic_variables_batch_pcs,
+                                              data_set = "dat_outcome1")
+kable(outcome1_genetic_reg_stats)
+#outcome1_genetic_reg_stats
+```
+
+*Full model*
+Includes genetics  
+```{r outcome1 full model for analysis 2b, echo=FALSE}
+# Regression coefficients
+outcome1_all_factors_estimates_analysis_2b <- model.estimates(outcome = "single_anxiety_vs_anxiety_anxiety_numeric",
+                                                              variables = all_explanatory_variables_analysis_2b,
+                                                              data_set = "dat_outcome1")
+#kable(outcome1_all_factors_estimates_analysis_2b)
+#outcome1_all_factors_estimates_analysis_2b
+
+# Regression diagnostic statistics
+outcome1_all_factors_reg_stats_analysis_2b <- model.reg.stats(outcome = "single_anxiety_vs_anxiety_anxiety_numeric",
+                                                              variables = all_explanatory_variables_analysis_2b,
+                                                              data_set = "dat_outcome1")
+kable(outcome1_all_factors_reg_stats_analysis_2b)
+#outcome1_all_factors_reg_stats_analysis_2b
+```
+
+```{r vif analysis 2b outcome1}
+vif_analysis_2b_outcome1 <- model.vif(
+  outcome = "single_anxiety_vs_anxiety_anxiety_numeric",
+  variables = all_explanatory_variables_analysis_2b,
+  data_set = "dat_outcome1")
+
+vif_analysis_2b_outcome1 
+```
+
+*outcome1 model Ns*  
+Number of participants included in each model for analysis 2b
+
+```{r outcome1 model Ns for analysis 2b, echo=FALSE}
+#Genetic model
+## N included
+outcome1_genetic_N <- dat_outcome1 %>% 
+    select(genetic_variables_batch_pcs) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Full model (analysis 2b)
+## N included
+outcome1_full_analysis_2b_N <- dat_outcome1 %>% 
+    select(all_explanatory_variables_analysis_2b) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Dataframe with all values
+outcome1_all_models_included_analysis_2b <- c(outcome1_sociodemographic_N, 
+                                              outcome1_trauma_N,  
+                                              outcome1_clinical_N, 
+                                              outcome1_genetic_N, 
+                                              outcome1_full_analysis_2b_N)
+outcome1_model_Ns_analysis_2b <- model_Ns_dataframe_analysis_2b %>% 
+  mutate(
+    Outcome = "anxiety-anxiety (vs single anxiety)",
+    Model = model_Ns_labels_analysis_2b,
+    `N included` = outcome1_all_models_included_analysis_2b
+  )
+kable(outcome1_model_Ns_analysis_2b)
+```
+
+
+
+### Outcome 2
+
+*Genetic model, unadjusted*
+```{r outcome2 genetic model unadjusted, echo=FALSE}
+# Regression coefficients
+outcome2_genetic_estimates <- model.estimates(outcome = "single_anxiety_vs_anxiety_depression_numeric",
+                                              variables = genetic_variables_batch_pcs,
+                                              data_set = "dat_outcome2")
+#kable(outcome2_genetic_estimates)
+#outcome2_genetic_estimates
+
+# Regression diagnostic statistics
+outcome2_genetic_reg_stats <- model.reg.stats(outcome = "single_anxiety_vs_anxiety_depression_numeric",
+                                              variables = genetic_variables_batch_pcs,
+                                              data_set = "dat_outcome2")
+kable(outcome2_genetic_reg_stats)
+#outcome2_genetic_reg_stats
+```
+
+*Full model * 
+All GLAD baseline variables  
+Includes genetic variables  
+Excludes family history variables  
+```{r outcome2 full baseline model (analysis 2b) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome2_all_factors_estimates_analysis_2b <- model.estimates(outcome = "single_anxiety_vs_anxiety_depression_numeric",
+                                                              variables = all_explanatory_variables_analysis_2b,
+                                                              data_set = "dat_outcome2")
+#kable(outcome2_all_factors_estimates_analysis_2b)
+#outcome2_all_factors_estimates_analysis_2b
+
+# Regression diagnostic statistics
+outcome2_all_factors_reg_stats_analysis_2b <- model.reg.stats(outcome = "single_anxiety_vs_anxiety_depression_numeric",
+                                                              variables = all_explanatory_variables_analysis_2b,
+                                                              data_set = "dat_outcome2")
+kable(outcome2_all_factors_reg_stats_analysis_2b)
+#outcome2_all_factors_reg_stats_analysis_2b
+```
+
+```{r vif analysis 2b outcome2}
+vif_analysis_2b_outcome2 <- model.vif(
+  outcome = "single_anxiety_vs_anxiety_depression_numeric",
+  variables = all_explanatory_variables_analysis_2b,
+  data_set = "dat_outcome2")
+
+vif_analysis_2b_outcome2 
+```
+
+*outcome2 model Ns*  
+Number of participants included in each model
+```{r outcome2 model Ns for analysis 2b, echo=FALSE}
+#Genetic model
+## N included
+outcome2_genetic_N <- dat_outcome2 %>% 
+    select(genetic_variables_batch_pcs) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Full model (analysis 2b)
+## N included
+outcome2_full_analysis_2b_N <- dat_outcome2 %>% 
+    select(all_explanatory_variables_analysis_2b) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Dataframe with all values
+outcome2_all_models_included_analysis_2b <- c(outcome2_sociodemographic_N, 
+                                              outcome2_trauma_N,  
+                                              outcome2_clinical_N, 
+                                              outcome2_genetic_N, 
+                                              outcome2_full_analysis_2b_N)
+outcome2_model_Ns_analysis_2b <- model_Ns_dataframe_analysis_2b %>% 
+  mutate(
+    Outcome = "anxiety-MDD (vs single anxiety)",
+    Model = model_Ns_labels_analysis_2b,
+    `N included` = outcome2_all_models_included_analysis_2b
+  )
+kable(outcome2_model_Ns_analysis_2b)
+```
+
+### Outcome 3
+
+*Genetic model, unadjusted*
+```{r outcome3 genetic model unadjusted, echo=FALSE}
+# Regression coefficients
+outcome3_genetic_estimates <- model.estimates(outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+                                              variables = genetic_variables_batch_pcs,
+                                              data_set = "dat_outcome3")
+#kable(outcome3_genetic_estimates)
+#outcome3_genetic_estimates
+
+# Regression diagnostic statistics
+outcome3_genetic_reg_stats <- model.reg.stats(outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+                                              variables = genetic_variables_batch_pcs,
+                                              data_set = "dat_outcome3")
+kable(outcome3_genetic_reg_stats)
+#outcome3_genetic_reg_stats
+```
+
+*Full model*  
+Includes genetic variables  
+Excludes family history variable
+```{r outcome3 full model (analysis 2b), echo=FALSE}
+# Regression coefficients
+outcome3_all_factors_estimates_analysis_2b <- model.estimates(outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+                                                              variables = all_explanatory_variables_analysis_2b,
+                                                              data_set = "dat_outcome3")
+#kable(outcome3_all_factors_estimates_analysis_2b)
+#outcome3_all_factors_estimates_analysis_2b
+
+# Regression diagnostic statistics
+outcome3_all_factors_reg_stats_analysis_2b <- model.reg.stats(outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+                                                              variables = all_explanatory_variables_analysis_2b,
+                                                              data_set = "dat_outcome3")
+kable(outcome3_all_factors_reg_stats_analysis_2b)
+#outcome3_all_factors_reg_stats_analysis_2b
+```
+
+```{r vif analysis 2b outcome3}
+vif_analysis_2b_outcome3 <- model.vif(
+  outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+  variables = all_explanatory_variables_analysis_2b,
+  data_set = "dat_outcome3")
+
+vif_analysis_2b_outcome3 
+```
+
+*Outcome3 model Ns*  
+Number of participants included in each model
+```{r outcome3 model Ns for analysis 2b, echo=FALSE}
+
+#Genetic model
+## N included
+outcome3_genetic_N <- dat_outcome3 %>% 
+    select(genetic_variables_batch_pcs) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Full model (analysis 2b)
+## N included
+outcome3_full_analysis_2b_N <- dat_outcome3 %>% 
+    select(all_explanatory_variables_analysis_2b) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Dataframe with all values
+outcome3_all_models_included_analysis_2b <- c(outcome3_sociodemographic_N, 
+                                              outcome3_trauma_N,
+                                              outcome3_clinical_N, 
+                                              outcome3_genetic_N,
+                                              outcome3_full_analysis_2b_N
+                                              )
+
+outcome3_model_Ns_analysis_2b <- model_Ns_dataframe_analysis_2b %>% 
+  mutate(
+    Outcome = "anxiety-anxiety (vs anxiety-MDD)",
+    Model = model_Ns_labels_analysis_2b,
+    `N included` = outcome3_all_models_included_analysis_2b
+  )
+kable(outcome3_model_Ns_analysis_2b)
+```
+
+### Outcome 4
+
+*Genetic model, unadjusted*
+```{r outcome4 genetic model unadjusted, echo=FALSE}
+# Regression coefficients
+outcome4_genetic_estimates <- model.estimates(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                              variables = genetic_variables_batch_pcs,
+                                              data_set = "dat_outcome4")
+#kable(outcome4_genetic_estimates)
+#outcome4_genetic_estimates
+
+# Regression diagnostic statistics
+outcome4_genetic_reg_stats <- model.reg.stats(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                              variables = genetic_variables_batch_pcs,
+                                              data_set = "dat_outcome4")
+kable(outcome4_genetic_reg_stats)
+#outcome4_genetic_reg_stats
+```
+
+*Full model*  
+Includes genetic variables  
+Excludes family history variable  
+```{r outcome4 full model (analysis 2b), echo=FALSE}
+# Regression coefficients
+outcome4_all_factors_estimates_analysis_2b <- model.estimates(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                                              variables = all_explanatory_variables_analysis_2b,
+                                                              data_set = "dat_outcome4")
+#kable(outcome4_all_factors_estimates_analysis_2b)
+#outcome4_all_factors_estimates_analysis_2b
+
+# Regression diagnostic statistics
+outcome4_all_factors_reg_stats_analysis_2b <- model.reg.stats(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                                              variables = all_explanatory_variables_analysis_2b,
+                                                              data_set = "dat_outcome4")
+kable(outcome4_all_factors_reg_stats_analysis_2b)
+#outcome4_all_factors_reg_stats_analysis_2b
+```
+
+```{r vif analysis 2b outcome4}
+vif_analysis_2b_outcome4 <- model.vif(
+  outcome = "single_depression_vs_anxiety_depression_numeric",
+  variables = all_explanatory_variables_analysis_2b,
+  data_set = "dat_outcome4")
+
+vif_analysis_2b_outcome4 
+```
+
+*Model Ns*
+
+```{r outcome4 model Ns for analysis 2b, echo=FALSE}
+#Genetic model (analysis 2b)
+## N included
+outcome4_genetic_N <- dat_outcome4 %>% 
+    select(genetic_variables_batch_pcs) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Full model (analysis 2b)
+## N included
+outcome4_full_analysis_2b_N <- dat_outcome4 %>% 
+    select(all_explanatory_variables_analysis_2b) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Dataframe with all values
+outcome4_all_models_included_analysis_2b <- c(outcome4_sociodemographic_N, outcome4_trauma_N,
+                                              outcome4_clinical_N, outcome4_genetic_N,
+                                              outcome4_full_analysis_2b_N)
+
+outcome4_model_Ns_analysis_2b <- model_Ns_dataframe_analysis_2b %>% 
+  mutate(
+    Outcome = "anxiety-MDD (vs MDD only)",
+    Model = model_Ns_labels_analysis_2b,
+    `N included` = outcome4_all_models_included_analysis_2b
+  )
+```
+
+## Combined GLM model Ns table
+
+```{r Ns table for analysis 2b, echo=FALSE}
+Ns_analysis_2b <- rbind(
+  outcome1_model_Ns_analysis_2b,
+  outcome2_model_Ns_analysis_2b,
+  outcome3_model_Ns_analysis_2b,
+  outcome4_model_Ns_analysis_2b
+)
+kable(Ns_analysis_2b)
+```
+
+## Combined VIF table
+
+```{r vif table for analysis 2b, echo=FALSE}
+vif_analysis_2b <- list(
+  vif_analysis_2b_outcome1,
+  vif_analysis_2b_outcome2,
+  vif_analysis_2b_outcome3,
+  vif_analysis_2b_outcome4
+  ) %>% 
+  reduce(full_join, by = c("Variable")) %>% 
+  rename(
+    "Anxiety-anxiety (vs single anxiety)" = "single_anxiety_vs_anxiety_anxiety_numeric",
+    "Anxiety-MDD (vs single anxiety)" = "single_anxiety_vs_anxiety_depression_numeric",
+    "Anxiety-anxiety (vs anxiety-MDD)" = "anxiety_depression_vs_anxiety_anxiety_numeric",
+    "Anxiety-MDD (vs MDD only)" = "single_depression_vs_anxiety_depression_numeric"
+  ) %>% 
+  mutate(
+        "Variable" = recode_factor(
+          Variable,
+          "dem.age_adjusted" = "Age",
+          "dem.sex" = "Sex",
+          "dem.highest_education_ordered_collapsed" = "Highest education",
+          "dem.ethnicity_collapsed" = "Ethnicity",
+          "mhfh.anxiety_or_depression_numeric" = "Family history: Anxiety/depressive disorder",
+          "mhfh.other_disorders_numeric" = "Family history: Other mental health disorder",
+          "cts.any_maltreatment_binary" = "Childhood trauma",
+          "ats.partner_abuse_binary" = "Adult trauma",
+          "ats.catastrophic_trauma_binary" = "Catastrophic trauma",
+          "mhd.anxiety_depression_numeric" = "Self-reported anxiety/depressive disorder diagnosis",
+          "mhd.other_diagnoses_numeric" = "Other self-reported mental health diagnosis",
+          "min_age_of_onset_adjusted" = "Age of onset",
+          "max_recurrence" = "Recurrence",
+          "phq9.sum_score" = "Current depressive symptoms (PHQ9)",
+          "gad7.sum_score" = "Current anxiety symptoms (GAD7)",
+          "anxietyPRS_z" = "Anxiety PRS",
+          "depression05_PRS_z" = "MDD PRS",
+          "neuroticismPRS_z" = "Neuroticism PRS",
+          "adhdPRS_z" = "ADHD PRS",
+          "autismPRS_z" = "Autism PRS",
+          "schizophreniaPRS_z" = "Schizophrenia PRS",
+          "educationPRS_z" = "Educational attainment PRS"))
+kable(vif_analysis_2b)
+```
+
+## Forest plot
+
+```{r functions required in book for global assignments for analysis 2b models, echo=FALSE}
+glmoutput_format_analysis_2b <- function(lmobject, group, dfname){
+  
+  ## Row labels
+  independent.variables <- c("intercept",
+                             "Age",
+                             "Female",
+                             "University degree",
+                             "A-levels or equivalent",
+                             "GCSEs or equivalent",
+                             "White",
+                             "Childhood trauma",
+                             "Adult trauma",
+                             "Catastrophic trauma",
+                             "Anxiety/depressive disorder \ndiagnosis",
+                             "Other mental health \ndiagnosis",
+                             "Age of onset",
+                             "Recurrence",
+                             "Current depressive \nsymptoms",
+                             "Current anxiety \nsymptoms",
+                             "Anxiety PRS",
+                             "MDD PRS",
+                             "Neuroticism PRS",
+                             "ADHD PRS",
+                             "Autism PRS",
+                             "Schizophrenia PRS",
+                             "Educational attainment PRS",
+                             "GLAD genotyping batch set 1",
+                             "GLAD genotyping batch set 2",
+                             "GLAD genotyping batch set 3",
+                             "COPING NBR batch set 1",
+                             "COPING NBR batch set 2",
+                             "COPING NBR batch set 3",
+                             "PC1",
+                             "PC2",
+                             "PC3",
+                             "PC4",
+                             "PC5",
+                             "PC6",
+                             "PC7",
+                             "PC8",
+                             "PC9",
+                             "PC10"
+                             )
+                             
+  ## categories to facet on 
+  ### Option 1: Overarching variable categories
+  categories <- c("Intercept",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Trauma",
+                  "Trauma",
+                  "Trauma",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Genetic",
+                  "Genetic",
+                  "Genetic",
+                  "Genetic",
+                  "Genetic",
+                  "Genetic",
+                  "Genetic",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates"
+                  )
+ 
+  ## Disorder dimension  
+  groups <- c(group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group
+              )
+  
+  # create data frame
+  df <- lmobject
+  
+  # add row labels
+  df$RowLabels <- independent.variables
+  
+  # Add category labels
+  df$Categories <- categories
+  
+  # Add group labels
+  df$Group <- groups
+  
+  # calculate upper and lower confidence intervals
+  ##logistic regression results include CI - just rename
+  df <- df %>%
+    rename(
+      "LowerBound" = "conf.low",
+      "UpperBound" = "conf.high")
+  
+  # drop intercept row
+  df <- df[(df$RowLabels != 'intercept'),]
+  
+  # order factors
+  df$RowLabels <- factor(df$RowLabels, levels = rev(independent.variables))   ## unadjusted rows
+  df$Categories <- factor(df$Categories, levels = unique(categories))   ## categories
+  
+  
+  # assign dataframe to global environment
+  assign(dfname, df, envir = .GlobalEnv)
+  
+}
+
+
+model.glm.form_analysis_2b <- function(outcome, data_set) {
+  
+  # define the variable name of the dependent variable
+  dependent.variable <- outcome
+  # define the independent variables
+  independent.variables <- all_explanatory_variables_analysis_2b
+  # create the formula
+  glm.formula <- as.formula(paste(dependent.variable, paste(independent.variables, collapse=" + "), sep=" ~ "))
+  
+  # run the glm
+  assign(paste0(outcome,".glmformula"),
+         glm(formula = glm.formula,
+             data = get(data_set),
+             family = "binomial"
+         )
+  )
+
+  assign(
+    paste0(outcome,"oddsratios.glmformula"),
+    tidy(
+      get(paste0(outcome,".glmformula")),
+      exponentiate = T,
+      conf.int = T
+    ))
+  
+  return(get(paste0(outcome,"oddsratios.glmformula")))
+}
+
+```
+
+```{r run models for all analysis 2b forest plot items, echo=FALSE}
+
+all.outcome1.glm_analysis_2b <-  model.glm.form_analysis_2b("single_anxiety_vs_anxiety_anxiety_numeric",
+                                  "dat_outcome1")
+
+all.outcome2.glm_analysis_2b <-  model.glm.form_analysis_2b("single_anxiety_vs_anxiety_depression_numeric",
+                                  "dat_outcome2")
+
+all.outcome3.glm_analysis_2b <-  model.glm.form_analysis_2b("anxiety_depression_vs_anxiety_anxiety_numeric",
+                                  "dat_outcome3")
+
+all.outcome4.glm_analysis_2b <-  model.glm.form_analysis_2b("single_depression_vs_anxiety_depression_numeric",
+                                  "dat_outcome4")
+```
+
+```{r generate analysis 2b datasets for all plots, echo=FALSE}
+# Results grouped by dependent variable
+glmoutput_format_analysis_2b(all.outcome1.glm_analysis_2b,"anxiety-anxiety (vs single anxiety)", "outcome1.glm.for.plot_analysis_2b")
+
+glmoutput_format_analysis_2b(all.outcome2.glm_analysis_2b,"anxiety-MDD (vs single anxiety)", "outcome2.glm.for.plot_analysis_2b")
+
+glmoutput_format_analysis_2b(all.outcome3.glm_analysis_2b,"anxiety-anxiety (vs anxiety-MDD)", "outcome3.glm.for.plot_analysis_2b")
+
+glmoutput_format_analysis_2b(all.outcome4.glm_analysis_2b,"anxiety-MDD (vs MDD only)", "outcome4.glm.for.plot_analysis_2b")
+
+```
+
+```{r merge analysis 2b datasets for different combinations, echo=FALSE}
+glm.plot.dat.all_analysis_2b <- rbind(outcome1.glm.for.plot_analysis_2b,
+                      outcome2.glm.for.plot_analysis_2b,
+                      outcome3.glm.for.plot_analysis_2b,
+                      outcome4.glm.for.plot_analysis_2b)
+```
+
+```{r order analysis 2b group variable for plotting, echo=FALSE}
+glm.plot.dat.all_analysis_2b$Group <- 
+  fct_relevel(glm.plot.dat.all_analysis_2b$Group,
+              "anxiety-MDD (vs MDD only)",
+              "anxiety-anxiety (vs anxiety-MDD)",
+              "anxiety-anxiety (vs single anxiety)",
+              "anxiety-MDD (vs single anxiety)"
+              )
+```
+
+```{r forest plot adjusted UpperBound for analysis 2b full models, fig.height=14, fig.width=12, dpi=120, echo=FALSE}
+
+plot_text_size=16
+
+foresplot_all_final_models_analysis_2b_adj <- plot_grid(
+  plot_grid(
+    lm.forest(glm.plot.dat.all_analysis_2b %>% 
+                filter(Categories=="Sociodemographic") %>% 
+                mutate(UpperBound =
+                         case_when(
+                           UpperBound <= 3 ~ UpperBound,
+                           UpperBound > 3 ~ 3
+                         )), 
+              title="",
+              colourpal=forestpal,
+              uplim=3),
+    lm.forest(glm.plot.dat.all_analysis_2b %>% 
+                filter(Categories=="Trauma") %>% 
+                mutate(UpperBound =
+                         case_when(
+                           UpperBound <= 3 ~ UpperBound,
+                           UpperBound > 3 ~ 3
+                         )), 
+              title="",
+              colourpal=forestpal,
+              uplim=3),
+    lm.forest(glm.plot.dat.all_analysis_2b %>% 
+                filter(Categories=="Clinical") %>% 
+                mutate(UpperBound =
+                         case_when(
+                           UpperBound <= 3 ~ UpperBound,
+                           UpperBound > 3 ~ 3
+                         )), 
+              title="",
+              colourpal=forestpal,
+              uplim=3),
+      lm.forest(glm.plot.dat.all_analysis_2b %>% 
+                filter(Categories=="Genetic") %>% 
+                mutate(UpperBound =
+                         case_when(
+                           UpperBound <= 3 ~ UpperBound,
+                           UpperBound > 3 ~ 3
+                         )), 
+              title="",
+              colourpal=forestpal,
+              uplim=3) +
+      theme(
+        axis.title.x = element_text(size = plot_text_size),
+        axis.text.x = element_text(size = plot_text_size)),
+    
+    
+    align = "v",
+    nrow = 4,
+    rel_heights = c(7/31, 4/31, 11/31, 9/31), 
+    hjust = c(0,0,0,0),
+    vjust = c(1,0,0,0)
+  ),
+   ggpubr::as_ggplot(cowplot::get_legend(
+     lm.forest(glm.plot.dat.all_analysis_2b, title="",colourpal=forestpal) +
+      theme(legend.position = c(0.6,0.5),
+            legend.direction = "horizontal",
+            legend.box = "horizontal",
+            legend.box.just = "centre",
+            legend.title = element_blank(),
+            legend.text = element_text(size = plot_text_size)) +
+      guides(color = guide_legend(order = 1, reverse = T, nrow=2, byrow=T))
+  )),
+  ncol= 1,
+  nrow = 2,
+  rel_heights = c(1, 0.05)
+)
+
+foresplot_all_final_models_analysis_2b_adj
+```
+
+
+```{r save final analysis 2b model results forestplot adjusted, echo=FALSE}
+ggsave(paste0("forestplot_combined_final_model_upperbound_analysis_2b_adj_", Sys.Date(), ".jpeg"),
+       path = figure_path,
+       plot = foresplot_all_final_models_analysis_2b_adj,
+       width = 12,
+       height = 14,
+       dpi = 150,
+       units = "in")
+```
+
+## Table: Unadjusted + final model results
+
+```{r format final GLM output table for analysis 2b, include=FALSE}
+full.glm.all.results_for_table_analysis_2b <- glm.plot.dat.all_analysis_2b %>% 
+  mutate(
+    RowLabels = fct_recode(
+      .f = RowLabels,
+      "Self-reported anxiety/depressive disorder diagnosis" = "Anxiety/depressive disorder \ndiagnosis",
+      "Other self-reported mental health diagnosis" = "Other mental health \ndiagnosis",
+      "Current depressive symptoms (PHQ9)" = "Current depressive \nsymptoms",
+      "Current anxiety symptoms (GAD7)" = "Current anxiety \nsymptoms"
+      ),
+    "adjusted.p.value" =
+           p.adjust(p.value, method = "fdr"),
+    "sig.thresholds" =
+      case_when(
+        adjusted.p.value <= 0.001 ~ "***",
+        adjusted.p.value <= 0.01 ~ "**",
+        adjusted.p.value <= 0.05 ~ "*",
+        adjusted.p.value > 0.05 ~ ""
+      ),
+    OR_sign = paste0(
+        format(round(estimate,2), nsmall=2, scientific = FALSE),
+        sig.thresholds),
+    CI_nospace = 
+      paste0(
+        "(", 
+        format(round(LowerBound, 2), nsmall=2, scientific = FALSE),
+        ",",
+        format(round(UpperBound, 2), nsmall=2, scientific = FALSE),
+        ")"
+      ),
+    across(where(is.character), str_remove_all, pattern = fixed(" ")),
+    Value = 
+      paste(OR_sign, CI_nospace, sep = " "),
+    across(where(is.character), str_replace, pattern = ",", replacement = ", ")
+  ) %>% 
+  select(Variable = RowLabels,
+         Group,
+         Value) %>% 
+  pivot_wider(names_from = Group,
+              values_from = Value)
+
+full.glm.all.results_for_table_analysis_2b
+```
+
+```{r format unadjusted GLM outcome1 tables for analysis 2b, include=FALSE}
+outcome1_unadjusted_analysis_2b <- rbind(outcome1_sociodemographic_reg_stats,
+                            outcome1_trauma_reg_stats,
+                            outcome1_clinical_reg_stats,
+                            outcome1_genetic_reg_stats) %>%
+  mutate(
+    "sig.thresholds" =
+      case_when(
+        as.numeric(`adjusted p value`) <= 0.001 ~ "***",
+        as.numeric(`adjusted p value`) <= 0.01 ~ "**",
+        as.numeric(`adjusted p value`) <= 0.05 ~ "*",
+        as.numeric(`adjusted p value`) > 0.05 ~ ""
+      ),
+    OR_sign = paste0(
+        format(OR, nsmall=2, scientific = FALSE),
+        sig.thresholds),
+    CI_nospace = 
+      paste0(
+        "(", 
+        format(`95% CI`, nsmall=2, scientific = FALSE),
+        ")"
+      ),
+    across(where(is.character), str_remove_all, pattern = fixed(" ")),
+    Value = 
+      paste(OR_sign, CI_nospace, sep = " "),
+    across(where(is.character), str_replace, pattern = ",", replacement = ", ")
+  ) %>% 
+  select(
+    "Variable" = "Independent variable",
+    "Anx-anx (vs Anx) unadjusted models OR (95% CI)" = "Value"
+  ) %>% 
+  filter(
+    Variable != "Intercept"
+  )
+
+outcome1_unadjusted_analysis_2b
+```
+
+```{r format unadjusted GLM outcome2 tables for analysis 2b, include=FALSE}
+outcome2_unadjusted_analysis_2b <- rbind(outcome2_sociodemographic_reg_stats,
+                            outcome2_trauma_reg_stats,
+                            outcome2_clinical_reg_stats,
+                            outcome2_genetic_reg_stats) %>%
+  mutate(
+    "sig.thresholds" =
+      case_when(
+        as.numeric(`adjusted p value`) <= 0.001 ~ "***",
+        as.numeric(`adjusted p value`) <= 0.01 ~ "**",
+        as.numeric(`adjusted p value`) <= 0.05 ~ "*",
+        as.numeric(`adjusted p value`) > 0.05 ~ ""
+      ),
+    OR_sign = paste0(
+        format(OR, nsmall=2, scientific = FALSE),
+        sig.thresholds),
+    CI_nospace = 
+      paste0(
+        "(", 
+        format(`95% CI`, nsmall=2, scientific = FALSE),
+        ")"
+      ),
+    across(where(is.character), str_remove_all, pattern = fixed(" ")),
+    Value = 
+      paste(OR_sign, CI_nospace, sep = " "),
+    across(where(is.character), str_replace, pattern = ",", replacement = ", ")
+  ) %>% 
+  select(
+    "Variable" = "Independent variable",
+    "Anx-MDD (vs Anx) unadjusted models OR (95% CI)" = "Value"
+  ) %>% 
+  filter(
+    Variable != "Intercept"
+  )
+
+outcome2_unadjusted_analysis_2b
+```
+
+```{r format unadjusted GLM outcome3 tables for analysis 2b, include=FALSE}
+outcome3_unadjusted_analysis_2b <- rbind(outcome3_sociodemographic_reg_stats,
+                            outcome3_trauma_reg_stats,
+                            outcome3_clinical_reg_stats,
+                            outcome3_genetic_reg_stats) %>%
+  mutate(
+    "sig.thresholds" =
+      case_when(
+        as.numeric(`adjusted p value`) <= 0.001 ~ "***",
+        as.numeric(`adjusted p value`) <= 0.01 ~ "**",
+        as.numeric(`adjusted p value`) <= 0.05 ~ "*",
+        as.numeric(`adjusted p value`) > 0.05 ~ ""
+      ),
+    OR_sign = paste0(
+        format(OR, nsmall=2, scientific = FALSE),
+        sig.thresholds),
+    CI_nospace = 
+      paste0(
+        "(", 
+        format(`95% CI`, nsmall=2, scientific = FALSE),
+        ")"
+      ),
+    across(where(is.character), str_remove_all, pattern = fixed(" ")),
+    Value = 
+      paste(OR_sign, CI_nospace, sep = " "),
+    across(where(is.character), str_replace, pattern = ",", replacement = ", ")
+  ) %>% 
+  select(
+    "Variable" = "Independent variable",
+    "Anx-anx (vs Anx-MDD) unadjusted models OR (95% CI)" = "Value"
+  ) %>% 
+  filter(
+    Variable != "Intercept"
+  )
+
+outcome3_unadjusted_analysis_2b
+```
+
+```{r format unadjusted GLM outcome4 tables for analysis 2b, include=FALSE}
+outcome4_unadjusted_analysis_2b <- rbind(outcome4_sociodemographic_reg_stats,
+                            outcome4_trauma_reg_stats,
+                            outcome4_clinical_reg_stats,
+                            outcome4_genetic_reg_stats) %>% 
+  mutate(
+    "sig.thresholds" =
+      case_when(
+        as.numeric(`adjusted p value`) <= 0.001 ~ "***",
+        as.numeric(`adjusted p value`) <= 0.01 ~ "**",
+        as.numeric(`adjusted p value`) <= 0.05 ~ "*",
+        as.numeric(`adjusted p value`) > 0.05 ~ ""
+      ),
+    OR_sign = paste0(
+        format(OR, nsmall=2, scientific = FALSE),
+        sig.thresholds),
+    CI_nospace = 
+      paste0(
+        "(", 
+        format(`95% CI`, nsmall=2, scientific = FALSE),
+        ")"
+      ),
+    across(where(is.character), str_remove_all, pattern = fixed(" ")),
+    Value = 
+      paste(OR_sign, CI_nospace, sep = " "),
+    across(where(is.character), str_replace, pattern = ",", replacement = ", ")
+  ) %>%  
+  select(
+    "Variable" = "Independent variable",
+    "Anx-MDD (vs MDD only) unadjusted models OR (95% CI)" = "Value"
+  ) %>% 
+  filter(
+    Variable != "Intercept"
+  )
+
+outcome4_unadjusted_analysis_2b
+```
+
+```{r merge unadjusted and final GLM output for analysis 2b, echo=FALSE}
+glm.unadjusted.table.all_analysis_2b <- list(outcome1_unadjusted_analysis_2b,
+                                                           outcome2_unadjusted_analysis_2b,
+                                                           outcome3_unadjusted_analysis_2b,
+                                                           outcome4_unadjusted_analysis_2b,
+                                                           full.glm.all.results_for_table_analysis_2b) %>%
+  reduce(left_join, by = c("Variable")) %>% 
+  rename(
+    "Anx-anx (vs Anx) full model OR (95% CI)" = "anxiety-anxiety (vs single anxiety)",
+    "Anx-MDD (vs Anx) full model OR (95% CI)" = "anxiety-MDD (vs single anxiety)",
+    "Anx-anx (vs Anx-MDD) full model OR (95% CI)" = "anxiety-anxiety (vs anxiety-MDD)",
+    "Anx-MDD (vs MDD only) full model OR (95% CI)" = "anxiety-MDD (vs MDD only)"
+  ) %>% 
+  # relocate("Anx-anx (vs Anx) full model OR (95% CI)", .before = "Anx-MDD (vs Anx) full model OR (95% CI)") %>% 
+  # relocate("Anx-anx (vs Anx) unadjusted models OR (95% CI)", .before = "Anx-MDD (vs Anx) unadjusted models OR (95% CI)") %>% 
+  mutate("Variable" = fct_relevel(
+    .f = Variable,
+    Variable_ordered_results
+    )
+  ) %>% 
+  arrange(Variable)
+
+#glm.unadjusted.table.all_analysis_2b
+kable(glm.unadjusted.table.all_analysis_2b)
+```
+
+  
+  
+# Combined table with Model Ns for *all* analyses
+
+```{r create empty model Ns dataframe, include=FALSE}
+model_Ns_labels_all_analyses <- c("Sociodemographic", 
+                                  "Trauma",  
+                                  "Clinical", 
+                                  "Family history",
+                                  "Genetic", 
+                                  "Full (Main analysis)", 
+                                  "Full (Analysis 2a)", 
+                                  "Full (Analysis 2b)")
+model_Ns_dataframe_all_analyses <- setNames(data.frame(matrix(ncol = 3, nrow = 8)), c("Outcome", 
+                                                                                      "Model",
+                                                                                      "N included"
+                                                                                      ))
+```
+
+*Outcome1 Model Ns*  
+Number of participants included in each model
+```{r outcome1 model Ns for all analyses, echo=FALSE}
+#Dataframe with all values
+outcome1_all_models_included_all_analyses <- c(outcome1_sociodemographic_N, 
+                                               outcome1_trauma_N, 
+                                               outcome1_clinical_N,
+                                               outcome1_family_history_N,
+                                               outcome1_genetic_N,
+                                               outcome1_full_main_analysis_N, 
+                                               outcome1_full_analysis_2a_N,
+                                               outcome1_full_analysis_2b_N
+                                               )
+
+outcome1_model_Ns_all_analyses <- model_Ns_dataframe_all_analyses %>% 
+  mutate(
+    Outcome = "anxiety-anxiety (vs single anxiety)",
+    Model = model_Ns_labels_all_analyses,
+    `N included` = outcome1_all_models_included_all_analyses
+  )
+#kable(outcome1_model_Ns_all_analyses)
+```
+
+*Outcome2 Model Ns*  
+Number of participants included in each model
+```{r outcome2 model Ns for all analyses, echo=FALSE}
+#Dataframe with all values
+outcome2_all_models_included_all_analyses <- c(outcome2_sociodemographic_N, 
+                                               outcome2_trauma_N, 
+                                               outcome2_clinical_N,
+                                               outcome2_family_history_N,
+                                               outcome2_genetic_N,
+                                               outcome2_full_main_analysis_N, 
+                                               outcome2_full_analysis_2a_N,
+                                               outcome2_full_analysis_2b_N
+                                               )
+
+outcome2_model_Ns_all_analyses <- model_Ns_dataframe_all_analyses %>% 
+  mutate(
+    Outcome = "anxiety-MDD (vs single anxiety)",
+    Model = model_Ns_labels_all_analyses,
+    `N included` = outcome2_all_models_included_all_analyses
+  )
+#kable(outcome2_model_Ns_all_analyses)
+```
+
+*Outcome3 Model Ns*  
+Number of participants included in each model
+```{r outcome3 model Ns for all analyses, echo=FALSE}
+#Dataframe with all values
+outcome3_all_models_included_all_analyses <- c(outcome3_sociodemographic_N, 
+                                               outcome3_trauma_N, 
+                                               outcome3_clinical_N,
+                                               outcome3_family_history_N,
+                                               outcome3_genetic_N,
+                                               outcome3_full_main_analysis_N, 
+                                               outcome3_full_analysis_2a_N,
+                                               outcome3_full_analysis_2b_N
+                                               )
+
+outcome3_model_Ns_all_analyses <- model_Ns_dataframe_all_analyses %>% 
+  mutate(
+    Outcome = "anxiety-anxiety (vs anxiety-MDD)",
+    Model = model_Ns_labels_all_analyses,
+    `N included` = outcome3_all_models_included_all_analyses
+  )
+#kable(outcome3_model_Ns_all_analyses)
+```
+
+*Outcome4 Model Ns*  
+Number of participants included in each model
+```{r outcome4 model Ns for all analyses, echo=FALSE}
+#Dataframe with all values
+outcome4_all_models_included_all_analyses <- c(outcome4_sociodemographic_N, 
+                                               outcome4_trauma_N, 
+                                               outcome4_clinical_N,
+                                               outcome4_family_history_N,
+                                               outcome4_genetic_N,
+                                               outcome4_full_main_analysis_N, 
+                                               outcome4_full_analysis_2a_N,
+                                               outcome4_full_analysis_2b_N
+                                               )
+
+outcome4_model_Ns_all_analyses <- model_Ns_dataframe_all_analyses %>% 
+  mutate(
+    Outcome = "anxiety-MDD (vs MDD only)",
+    Model = model_Ns_labels_all_analyses,
+    `N included` = outcome4_all_models_included_all_analyses
+  )
+#kable(outcome4_model_Ns_all_analyses)
+```
+
+*Participant numbers (N) table for all outcomes/models*
+```{r Ns table for all analyses, echo=FALSE}
+Ns_all_analyses <- rbind(
+  outcome1_model_Ns_all_analyses,
+  outcome2_model_Ns_all_analyses,
+  outcome3_model_Ns_all_analyses,
+  outcome4_model_Ns_all_analyses
+) %>% 
+  pivot_wider(names_from = "Model",
+              values_from = "N included")
+
+kable(Ns_all_analyses)
+```
+
+# Post-hoc sensitivity analyses
+
+## Without self-reported anx/dep diagnosis
+
+### Outcome1: anxiety-anxiety (vs single anxiety)
+
+#### Unadjusted model
+
+```{r outcome1 clinical model (without mhd anx/dep diagnoses) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome1_clinical_estimates_nomhd.anxdep <- model.estimates(outcome = "single_anxiety_vs_anxiety_anxiety_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% "mhd.anxiety_depression_numeric"],
+                                               data_set = "dat_outcome1")
+#kable(outcome1_clinical_estimates_nomhd.anxdep)
+#outcome1_clinical_estimates_nomhd.anxdep
+
+# Regression diagnostic statistics
+outcome1_clinical_reg_stats_nomhd.anxdep <- model.reg.stats(outcome = "single_anxiety_vs_anxiety_anxiety_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% "mhd.anxiety_depression_numeric"],
+                                               data_set = "dat_outcome1")
+kable(outcome1_clinical_reg_stats_nomhd.anxdep)
+#outcome1_clinical_reg_stats_nomhd.anxdep
+```
+
+#### Full model
+All GLAD baseline variables  
+Excludes family history variable  
+Excludes genetic variables
+```{r outcome1 full model (main analysis) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome1_all_factors_estimates_main_analysis_nomhd.anxdep <- model.estimates(outcome = "single_anxiety_vs_anxiety_anxiety_numeric",
+                                                                variables = all_explanatory_variables_main_analysis[!all_explanatory_variables_main_analysis %in% "mhd.anxiety_depression_numeric"],
+                                                                data_set = "dat_outcome1")
+#kable(outcome1_all_factors_estimates_main_analysis_nomhd.anxdep)
+#outcome1_all_factors_estimates_main_analysis_nomhd.anxdep
+
+# Regression diagnostic statistics
+outcome1_all_factors_reg_stats_main_analysis_nomhd.anxdep <- model.reg.stats(outcome = "single_anxiety_vs_anxiety_anxiety_numeric",
+                                                                variables = all_explanatory_variables_main_analysis[!all_explanatory_variables_main_analysis %in% "mhd.anxiety_depression_numeric"],
+                                                                data_set = "dat_outcome1")
+kable(outcome1_all_factors_reg_stats_main_analysis_nomhd.anxdep)
+#outcome1_all_factors_reg_stats_main_analysis_nomhd.anxdep
+```
+
+### Outcome2: anxiety-MDD (vs single anxiety)
+
+#### Unadjusted model
+
+```{r outcome2 clinical model (without mhd anx/dep diagnoses) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome2_clinical_estimates_nomhd.anxdep <- model.estimates(outcome = "single_anxiety_vs_anxiety_depression_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% "mhd.anxiety_depression_numeric"],
+                                               data_set = "dat_outcome2")
+#kable(outcome2_clinical_estimates_nomhd.anxdep)
+#outcome2_clinical_estimates_nomhd.anxdep
+
+# Regression diagnostic statistics
+outcome2_clinical_reg_stats_nomhd.anxdep <- model.reg.stats(outcome = "single_anxiety_vs_anxiety_depression_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% "mhd.anxiety_depression_numeric"],
+                                               data_set = "dat_outcome2")
+kable(outcome2_clinical_reg_stats_nomhd.anxdep)
+#outcome2_clinical_reg_stats_nomhd.anxdep
+```
+
+#### Full model
+All GLAD baseline variables  
+Excludes family history variable  
+Excludes genetic variables
+```{r outcome2 full model (main analysis) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome2_all_factors_estimates_main_analysis_nomhd.anxdep <- model.estimates(outcome = "single_anxiety_vs_anxiety_depression_numeric",
+                                                                variables = all_explanatory_variables_main_analysis[!all_explanatory_variables_main_analysis %in% "mhd.anxiety_depression_numeric"],
+                                                                data_set = "dat_outcome2")
+#kable(outcome2_all_factors_estimates_main_analysis_nomhd.anxdep)
+#outcome2_all_factors_estimates_main_analysis_nomhd.anxdep
+
+# Regression diagnostic statistics
+outcome2_all_factors_reg_stats_main_analysis_nomhd.anxdep <- model.reg.stats(outcome = "single_anxiety_vs_anxiety_depression_numeric",
+                                                                variables = all_explanatory_variables_main_analysis[!all_explanatory_variables_main_analysis %in% "mhd.anxiety_depression_numeric"],
+                                                                data_set = "dat_outcome2")
+kable(outcome2_all_factors_reg_stats_main_analysis_nomhd.anxdep)
+#outcome2_all_factors_reg_stats_main_analysis_nomhd.anxdep
+```
+
+### Outcome3: anxiety-anxiety (vs anxiety-MDD)
+
+#### Unadjusted model
+
+```{r outcome3 clinical model (without mhd anx/dep diagnoses) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome3_clinical_estimates_nomhd.anxdep <- model.estimates(outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% "mhd.anxiety_depression_numeric"],
+                                               data_set = "dat_outcome3")
+#kable(outcome3_clinical_estimates_nomhd.anxdep)
+#outcome3_clinical_estimates_nomhd.anxdep
+
+# Regression diagnostic statistics
+outcome3_clinical_reg_stats_nomhd.anxdep <- model.reg.stats(outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% "mhd.anxiety_depression_numeric"],
+                                               data_set = "dat_outcome3")
+kable(outcome3_clinical_reg_stats_nomhd.anxdep)
+#outcome3_clinical_reg_stats_nomhd.anxdep
+```
+
+#### Full model
+All GLAD baseline variables  
+Excludes family history variable  
+Excludes genetic variables
+```{r outcome3 full model (main analysis) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome3_all_factors_estimates_main_analysis_nomhd.anxdep <- model.estimates(outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+                                                                variables = all_explanatory_variables_main_analysis[!all_explanatory_variables_main_analysis %in% "mhd.anxiety_depression_numeric"],
+                                                                data_set = "dat_outcome3")
+#kable(outcome3_all_factors_estimates_main_analysis_nomhd.anxdep)
+#outcome3_all_factors_estimates_main_analysis_nomhd.anxdep
+
+# Regression diagnostic statistics
+outcome3_all_factors_reg_stats_main_analysis_nomhd.anxdep <- model.reg.stats(outcome = "anxiety_depression_vs_anxiety_anxiety_numeric",
+                                                                variables = all_explanatory_variables_main_analysis[!all_explanatory_variables_main_analysis %in% "mhd.anxiety_depression_numeric"],
+                                                                data_set = "dat_outcome3")
+kable(outcome3_all_factors_reg_stats_main_analysis_nomhd.anxdep)
+#outcome3_all_factors_reg_stats_main_analysis_nomhd.anxdep
+```
+
+### Outcome4: anxiety-MDD (vs MDD only)
+
+#### Unadjusted model
+
+```{r outcome4 clinical model (without mhd anx/dep diagnoses) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome4_clinical_estimates_nomhd.anxdep <- model.estimates(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% "mhd.anxiety_depression_numeric"],
+                                               data_set = "dat_outcome4")
+#kable(outcome4_clinical_estimates_nomhd.anxdep)
+#outcome4_clinical_estimates_nomhd.anxdep
+
+# Regression diagnostic statistics
+outcome4_clinical_reg_stats_nomhd.anxdep <- model.reg.stats(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% "mhd.anxiety_depression_numeric"],
+                                               data_set = "dat_outcome4")
+kable(outcome4_clinical_reg_stats_nomhd.anxdep)
+#outcome4_clinical_reg_stats_nomhd.anxdep
+```
+
+#### Full model
+All GLAD baseline variables  
+Excludes family history variable  
+Excludes genetic variables
+```{r outcome4 full model (main analysis) unadjusted, echo=FALSE}
+# Regression coefficients
+outcome4_all_factors_estimates_main_analysis_nomhd.anxdep <- model.estimates(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                                                variables = all_explanatory_variables_main_analysis[!all_explanatory_variables_main_analysis %in% "mhd.anxiety_depression_numeric"],
+                                                                data_set = "dat_outcome4")
+#kable(outcome4_all_factors_estimates_main_analysis_nomhd.anxdep)
+#outcome4_all_factors_estimates_main_analysis_nomhd.anxdep
+
+# Regression diagnostic statistics
+outcome4_all_factors_reg_stats_main_analysis_nomhd.anxdep <- model.reg.stats(outcome = "single_depression_vs_anxiety_depression_numeric",
+                                                                variables = all_explanatory_variables_main_analysis[!all_explanatory_variables_main_analysis %in% "mhd.anxiety_depression_numeric"],
+                                                                data_set = "dat_outcome4")
+kable(outcome4_all_factors_reg_stats_main_analysis_nomhd.anxdep)
+#outcome4_all_factors_reg_stats_main_analysis_nomhd.anxdep
+```
+
+## Table: Unadjusted + final model results
+
+```{r functions required in book for global assignments without mhd.anxdep, echo=FALSE}
+glmoutput_format_main_analysis_nomhd.anxdep <- function(lmobject, group, dfname){
+  
+  ## Row labels
+  independent.variables <- c("intercept",
+                             "Age",
+                             "Female",
+                             "University degree",
+                             "A-levels or equivalent",
+                             "GCSEs or equivalent",
+                             "White",
+                             "Childhood trauma",
+                             "Adult trauma",
+                             "Catastrophic trauma",
+                             "Other mental health \ndiagnosis",
+                             "Age of onset",
+                             "Recurrence",
+                             "Current depressive \nsymptoms",
+                             "Current anxiety \nsymptoms"
+                             )
+                             
+  ## categories to facet on 
+  ### Option 1: Overarching variable categories
+  categories <- c("Intercept",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Trauma",
+                  "Trauma",
+                  "Trauma",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical"
+                  )
+  
+  ## Disorder dimension  
+  groups <- c(group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group
+              )
+  
+  # create data frame
+  df <- lmobject
+  
+  # add row labels
+  df$RowLabels <- independent.variables
+  
+  # Add category labels
+  df$Categories <- categories
+  
+  # Add group labels
+  df$Group <- groups
+  
+  # calculate upper and lower confidence intervals
+  ##logistic regression results include CI - just rename
+  df <- df %>%
+    rename(
+      "LowerBound" = "conf.low",
+      "UpperBound" = "conf.high")
+  
+  # drop intercept row
+  df <- df[(df$RowLabels != 'intercept'),]
+  
+  # order factors
+  df$RowLabels <- factor(df$RowLabels, levels = rev(independent.variables))   ## unadjusted rows
+  df$Categories <- factor(df$Categories, levels = unique(categories))   ## categories
+  
+  
+  # assign dataframe to global environment
+  assign(dfname, df, envir = .GlobalEnv)
+  
+}
+
+
+model.glm.form_main_analysis_nomhd.anxdep <- function(outcome, data_set) {
+  
+  # define the variable name of the dependent variable
+  dependent.variable <- outcome
+  # define the independent variables
+  independent.variables <- all_explanatory_variables_main_analysis[!all_explanatory_variables_main_analysis %in% "mhd.anxiety_depression_numeric"]
+  # create the formula
+  glm.formula <- as.formula(paste(dependent.variable, paste(independent.variables, collapse=" + "), sep=" ~ "))
+  
+  # run the glm
+  assign(paste0(outcome,".glmformula"),
+         glm(formula = glm.formula,
+             data = get(data_set),
+             family = "binomial"
+         )
+  )
+
+  assign(
+    paste0(outcome,"oddsratios.glmformula_main_analysis_nomhd.anxdep"),
+    tidy(
+      get(paste0(outcome,".glmformula")),
+      exponentiate = T,
+      conf.int = T
+    ))
+  
+  return(get(paste0(outcome,"oddsratios.glmformula_main_analysis_nomhd.anxdep")))
+}
+
+```
+
+```{r run main analysis without mhd.anxdep models for table, echo=FALSE}
+
+all.outcome1.glm_main_analysis_nomhd.anxdep <-  model.glm.form_main_analysis_nomhd.anxdep("single_anxiety_vs_anxiety_anxiety_numeric",
+                                  "dat_outcome1")
+
+all.outcome2.glm_main_analysis_nomhd.anxdep <-  model.glm.form_main_analysis_nomhd.anxdep("single_anxiety_vs_anxiety_depression_numeric",
+                                  "dat_outcome2")
+
+all.outcome3.glm_main_analysis_nomhd.anxdep <-  model.glm.form_main_analysis_nomhd.anxdep("anxiety_depression_vs_anxiety_anxiety_numeric",
+                                  "dat_outcome3")
+
+all.outcome4.glm_main_analysis_nomhd.anxdep <-  model.glm.form_main_analysis_nomhd.anxdep("single_depression_vs_anxiety_depression_numeric",
+                                  "dat_outcome4")
+```
+
+```{r generate main analysis without mhd.anxdep datasets for table, echo=FALSE}
+# Results grouped by dependent variable
+glmoutput_format_main_analysis_nomhd.anxdep(all.outcome1.glm_main_analysis_nomhd.anxdep,"anxiety-anxiety (vs single anxiety)", "outcome1.glm.for.plot_main_analysis_nomhd.anxdep")
+
+glmoutput_format_main_analysis_nomhd.anxdep(all.outcome2.glm_main_analysis_nomhd.anxdep,"anxiety-MDD (vs single anxiety)", "outcome2.glm.for.plot_main_analysis_nomhd.anxdep")
+
+glmoutput_format_main_analysis_nomhd.anxdep(all.outcome3.glm_main_analysis_nomhd.anxdep,"anxiety-anxiety (vs anxiety-MDD)", "outcome3.glm.for.plot_main_analysis_nomhd.anxdep")
+
+glmoutput_format_main_analysis_nomhd.anxdep(all.outcome4.glm_main_analysis_nomhd.anxdep,"anxiety-MDD (vs MDD only)", "outcome4.glm.for.plot_main_analysis_nomhd.anxdep")
+
+```
+
+```{r merge main analysis without mhd.anxdep datasets for different combinations, echo=FALSE}
+glm.plot.dat.all_main_analysis_nomhd.anxdep <- rbind(outcome1.glm.for.plot_main_analysis_nomhd.anxdep,
+                      outcome2.glm.for.plot_main_analysis_nomhd.anxdep,
+                      outcome3.glm.for.plot_main_analysis_nomhd.anxdep,
+                      outcome4.glm.for.plot_main_analysis_nomhd.anxdep)
+```
+
+```{r format final GLM output table for main analysis without mhd.anxdep, include=FALSE}
+full.glm.all.results_for_table_main_analysis_nomhd.anxdep <- glm.plot.dat.all_main_analysis_nomhd.anxdep %>% 
+  mutate(
+    RowLabels = fct_recode(
+      .f = RowLabels,
+      "Family history: Anxiety/depressive disorder" = "Family history: \nAnxiety/depressive disorder",
+      "Family history: Other mental health disorder" = "Family history: \nOther mental health disorder",
+      "Self-reported anxiety/depressive disorder diagnosis" = "Anxiety/depressive disorder \ndiagnosis",
+      "Other self-reported mental health diagnosis" = "Other mental health \ndiagnosis",
+      "Current depressive symptoms (PHQ9)" = "Current depressive \nsymptoms",
+      "Current anxiety symptoms (GAD7)" = "Current anxiety \nsymptoms"
+      ),
+    "adjusted.p.value" =
+           p.adjust(p.value, method = "fdr"),
+    "sig.thresholds" =
+      case_when(
+        adjusted.p.value <= 0.001 ~ "***",
+        adjusted.p.value <= 0.01 ~ "**",
+        adjusted.p.value <= 0.05 ~ "*",
+        adjusted.p.value > 0.05 ~ ""
+      ),
+    OR_sign = paste0(
+        format(round(estimate,2), nsmall=2, scientific = FALSE),
+        sig.thresholds),
+    CI_nospace = 
+      paste0(
+        "(", 
+        format(round(LowerBound, 2), nsmall=2, scientific = FALSE),
+        ",",
+        format(round(UpperBound, 2), nsmall=2, scientific = FALSE),
+        ")"
+      ),
+    Value = 
+      paste(OR_sign, CI_nospace, sep = " "),
+    across(where(is.character), str_replace, pattern = ",", replacement = ", ")
+  ) %>% 
+  select(Variable = RowLabels,
+         Group,
+         Value) %>% 
+  pivot_wider(names_from = Group,
+              values_from = Value)
+
+full.glm.all.results_for_table_main_analysis_nomhd.anxdep
+```
+
+```{r format unadjusted GLM outcome1 tables for main analysis without mhd.anxdep, include=FALSE}
+outcome1_unadjusted_main_analysis_nomhd.anxdep <- rbind(outcome1_sociodemographic_reg_stats,
+                                         outcome1_trauma_reg_stats,
+                                         outcome1_clinical_reg_stats_nomhd.anxdep) %>%
+  mutate(
+    "sig.thresholds" =
+      case_when(
+        as.numeric(`adjusted p value`) <= 0.001 ~ "***",
+        as.numeric(`adjusted p value`) <= 0.01 ~ "**",
+        as.numeric(`adjusted p value`) <= 0.05 ~ "*",
+        as.numeric(`adjusted p value`) > 0.05 ~ ""
+      ),
+    OR_sign = paste0(
+        format(OR, nsmall=2, scientific = FALSE),
+        sig.thresholds),
+    CI_nospace = 
+      paste0(
+        "(", 
+        format(`95% CI`, nsmall=2, scientific = FALSE),
+        ")"
+      ),
+    across(where(is.character), str_remove_all, pattern = fixed(" ")),
+    Value = 
+      paste(OR_sign, CI_nospace, sep = " "),
+    across(where(is.character), str_replace, pattern = ",", replacement = ", ")
+  ) %>% 
+  select(
+    "Variable" = "Independent variable",
+    "Anx-anx (vs Anx) unadjusted models OR (95% CI)" = "Value"
+  ) %>% 
+  filter(
+    Variable != "Intercept"
+  )
+
+outcome1_unadjusted_main_analysis_nomhd.anxdep
+```
+
+```{r format unadjusted GLM outcome2 tables for main analysis without mhd.anxdep, include=FALSE}
+outcome2_unadjusted_main_analysis_nomhd.anxdep <- rbind(outcome2_sociodemographic_reg_stats,
+                                         outcome2_trauma_reg_stats,
+                                         outcome2_clinical_reg_stats_nomhd.anxdep) %>%
+  mutate(
+    "sig.thresholds" =
+      case_when(
+        as.numeric(`adjusted p value`) <= 0.001 ~ "***",
+        as.numeric(`adjusted p value`) <= 0.01 ~ "**",
+        as.numeric(`adjusted p value`) <= 0.05 ~ "*",
+        as.numeric(`adjusted p value`) > 0.05 ~ ""
+      ),
+    OR_sign = paste0(
+        format(OR, nsmall=2, scientific = FALSE),
+        sig.thresholds),
+    CI_nospace = 
+      paste0(
+        "(", 
+        format(`95% CI`, nsmall=2, scientific = FALSE),
+        ")"
+      ),
+    across(where(is.character), str_remove_all, pattern = fixed(" ")),
+    Value = 
+      paste(OR_sign, CI_nospace, sep = " "),
+    across(where(is.character), str_replace, pattern = ",", replacement = ", ")
+  ) %>% 
+  select(
+    "Variable" = "Independent variable",
+    "Anx-MDD (vs Anx) unadjusted models OR (95% CI)" = "Value"
+  ) %>% 
+  filter(
+    Variable != "Intercept"
+  )
+
+outcome2_unadjusted_main_analysis_nomhd.anxdep
+```
+
+```{r format unadjusted GLM outcome3 tables for main analysis without mhd.anxdep, include=FALSE}
+outcome3_unadjusted_main_analysis_nomhd.anxdep <- rbind(outcome3_sociodemographic_reg_stats,
+                                         outcome3_trauma_reg_stats,
+                                         outcome3_clinical_reg_stats_nomhd.anxdep) %>%
+  mutate(
+    "sig.thresholds" =
+      case_when(
+        as.numeric(`adjusted p value`) <= 0.001 ~ "***",
+        as.numeric(`adjusted p value`) <= 0.01 ~ "**",
+        as.numeric(`adjusted p value`) <= 0.05 ~ "*",
+        as.numeric(`adjusted p value`) > 0.05 ~ ""
+      ),
+    OR_sign = paste0(
+        format(OR, nsmall=2, scientific = FALSE),
+        sig.thresholds),
+    CI_nospace = 
+      paste0(
+        "(", 
+        format(`95% CI`, nsmall=2, scientific = FALSE),
+        ")"
+      ),
+    across(where(is.character), str_remove_all, pattern = fixed(" ")),
+    Value = 
+      paste(OR_sign, CI_nospace, sep = " "),
+    across(where(is.character), str_replace, pattern = ",", replacement = ", ")
+  ) %>% 
+  select(
+    "Variable" = "Independent variable",
+    "Anx-anx (vs Anx-MDD) unadjusted models OR (95% CI)" = "Value"
+  ) %>% 
+  filter(
+    Variable != "Intercept"
+  )
+
+outcome3_unadjusted_main_analysis_nomhd.anxdep
+```
+
+```{r format unadjusted GLM outcome4 tables for main analysis without mhd.anxdep, include=FALSE}
+outcome4_unadjusted_main_analysis_nomhd.anxdep <- rbind(outcome4_sociodemographic_reg_stats,
+                                         outcome4_trauma_reg_stats,
+                                         outcome4_clinical_reg_stats_nomhd.anxdep) %>% 
+  mutate(
+    "sig.thresholds" =
+      case_when(
+        as.numeric(`adjusted p value`) <= 0.001 ~ "***",
+        as.numeric(`adjusted p value`) <= 0.01 ~ "**",
+        as.numeric(`adjusted p value`) <= 0.05 ~ "*",
+        as.numeric(`adjusted p value`) > 0.05 ~ ""
+      ),
+    OR_sign = paste0(
+        format(OR, nsmall=2, scientific = FALSE),
+        sig.thresholds),
+    CI_nospace = 
+      paste0(
+        "(", 
+        format(`95% CI`, nsmall=2, scientific = FALSE),
+        ")"
+      ),
+    across(where(is.character), str_remove_all, pattern = fixed(" ")),
+    Value = 
+      paste(OR_sign, CI_nospace, sep = " "),
+    across(where(is.character), str_replace, pattern = ",", replacement = ", ")
+  ) %>% 
+  select(
+    "Variable" = "Independent variable",
+    "Anx-MDD (vs MDD only) unadjusted models OR (95% CI)" = "Value"
+  ) %>% 
+  filter(
+    Variable != "Intercept"
+  )
+
+outcome4_unadjusted_main_analysis_nomhd.anxdep
+```
+
+### Unadjusted results for clinical factors only
+The clinical model is the only unadjusted analysis that has 
+```{r merge unadjusted GLM output table for main analysis without mhd.anxdep, echo=FALSE}
+glm.unadjusted.clinical.table_main_analysis_nomhd.anxdep <- list(outcome1_unadjusted_main_analysis_nomhd.anxdep,
+                                                       outcome2_unadjusted_main_analysis_nomhd.anxdep,
+                                                       outcome3_unadjusted_main_analysis_nomhd.anxdep,
+                                                       outcome4_unadjusted_main_analysis_nomhd.anxdep) %>%
+  reduce(left_join, by = c("Variable")) %>% 
+  mutate("Variable" = fct_relevel(
+    .f = Variable,
+    Variable_ordered_results
+    )
+  ) %>% 
+  arrange(Variable)
+
+#glm.unadjusted.clinical.table_main_analysis_nomhd.anxdep
+kable(glm.unadjusted.clinical.table_main_analysis_nomhd.anxdep)
+```
+
+### Unadjusted and full model results
+
+```{r merge unadjusted and all factors GLM output table for main analysis without mhd.anxdep, echo=FALSE}
+glm.unadjusted.table.all_main_analysis_nomhd.anxdep <- list(outcome1_unadjusted_main_analysis_nomhd.anxdep,
+                                             outcome2_unadjusted_main_analysis_nomhd.anxdep,
+                                             outcome3_unadjusted_main_analysis_nomhd.anxdep,
+                                             outcome4_unadjusted_main_analysis_nomhd.anxdep,
+                                             full.glm.all.results_for_table_main_analysis_nomhd.anxdep) %>%
+  reduce(left_join, by = c("Variable")) %>% 
+  rename(
+    "Anx-anx (vs Anx) full model OR (95% CI)" = "anxiety-anxiety (vs single anxiety)",
+    "Anx-MDD (vs Anx) full model OR (95% CI)" = "anxiety-MDD (vs single anxiety)",
+    "Anx-anx (vs Anx-MDD) full model OR (95% CI)" = "anxiety-anxiety (vs anxiety-MDD)",
+    "Anx-MDD (vs MDD only) full model OR (95% CI)" = "anxiety-MDD (vs MDD only)"
+  ) %>%
+  # relocate("Anx-MDD (vs Anx) full model OR (95% CI)", .before = "Anx-anx (vs Anx) full model OR (95% CI)") %>% 
+  # relocate("Anx-MDD (vs Anx) unadjusted models OR (95% CI)", .before = "Anx-anx (vs Anx) unadjusted models OR (95% CI)") %>% 
+  mutate("Variable" = fct_relevel(
+    .f = Variable,
+    Variable_ordered_results
+    )
+  ) %>% 
+  arrange(Variable)
+
+#glm.unadjusted.table.all_main_analysis_nomhd.anxdep
+kable(glm.unadjusted.table.all_main_analysis_nomhd.anxdep)
+```
+
+

@@ -1,0 +1,3444 @@
+---
+title: "ANXCMBD_primary_analyses_TEMPSEQ"
+author: "Molly R. Davies"
+date: "25/01/2022"
+output:
+  word_document:
+    toc: yes
+  pdf_document:
+    toc: yes
+  html_document:
+    code_folding: hide
+    df_print: paged
+    highlight: monochrome
+    number_sections: no
+    theme: readable
+    toc: yes
+    toc_float:
+      collapsed: yes
+editor_options:
+  chunk_output_type: inline
+---
+
+This script was utilised to run the primary analyses for the paper "" (Davies et al, 2022). https://doi.org/10.1016/j.jad.2022.11.051
+
+The paper has been pre-registered at: https://osf.io/ksrf2 
+
+These analyses involve comparisons between anxiety-first and MDD-first anxiety-MDD comorbidity.    
+There are 3 stages to the primary analyses:  
+1. Main analyses: Datapoints collected on all participants  
+2a. Family history analyses: All variables in main analysis + self-reported family history of mental health disorders variables
+2b. Genetic analyses: All variables in main analysis + PRS for relevant traits/disorders 
+
+Script written by M. R. Davies.
+Email:  molly.davies@kcl.ac.uk
+
+All scripts for the paper can be accessed at:
+https://github.com/mollyrdavies/ANXCMBD-GLAD-COPING
+
+# Setup
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      comment=NA,
+                      prompt=FALSE,
+                      cache=FALSE)
+```
+
+Delete everything in your global environment
+```{r Clear global environment, include=FALSE}
+#remove(list = ls())
+```
+
+Install packages
+```{r Install packages, include=FALSE}
+# Remember to hash the installing out
+#install.packages("knitr")
+#install.packages("skimr")
+#install.packages("psych")
+#install.packages("stats")
+#install.packages("cowplot") #for forest plot
+#install.packages("corrplot") #for correlation matrix
+#install.packages("polycor") #for correlation matrix
+#install.packages("car") #for regression assumption diagnostics
+#install.packages("ggfortify") #diagnostic plots 
+#install.packages("broom") #for diagnostic values and tidy regression output
+#install.packages("yardstick")
+#install.packages("ggpubr") #for forest plot
+#install.packages("patchwork") #for combining descriptives_tempseq figures
+#install.packages("tidyverse") #contains dplyr, ggplot2, lubridate, broom and other useful packages. Broom is useful here as it turns messy output of base R functions such as "lm" (for linear regression) into tidy data frames
+```
+
+Load Packages
+```{r Packages, include=FALSE}
+library(knitr)
+library(skimr)
+library(psych)
+library(stats)
+library(cowplot)
+library(corrplot)
+library(polycor)
+library(car)
+library(ggfortify)
+#library(summarytools)
+library(broom)
+library(yardstick)
+library(ggpubr)
+library(patchwork)
+library(tidyverse) 
+```
+
+```{r GLAD Colour Palette, include=FALSE}
+GLADpalette = c(
+  "#efc00b", #Yellow
+  "#b7dee8", #Light blue
+  "#fef1ba", #Light yellow
+  "#009fb7" #Turquoise
+  )
+```
+
+# Data import
+
+```{r source file paths, include=FALSE}
+source("./ANXCMBD_data_path.R")
+```
+
+```{r Read in data, include=FALSE}
+#dat <- read_rds(paste0(cleaned_path, "anxcmbd_final_dataset_fixed_education.rds"))
+```
+
+```{r visualise, include=FALSE}
+head(dat)
+```
+
+# Explanatory variable vectors
+
+```{r vector of sociodemographic variables, include=FALSE}
+sociodemographic_variables <- 
+  c(
+    "dem.age_adjusted",
+    "dem.sex", 
+    "dem.highest_education_ordered_collapsed", 
+    "dem.ethnicity_collapsed"
+   )
+sociodemographic_variables
+```
+
+```{r vector of sociodemographic variables and cohort, include=FALSE}
+sociodemographic_variables_cohort <- 
+  c(
+    "dem.age_adjusted",
+    "sample_factor",
+    "dem.sex", 
+    "dem.highest_education_ordered_collapsed", 
+    "dem.ethnicity_collapsed"
+   )
+sociodemographic_variables_cohort
+```
+
+Vector of vulnerability variables incuded in GLAD baseline (trauma only)
+Binary trauma variables
+Adult trauma variable only includes partner abuse variables
+Excludes family history and personality data
+```{r vector of vulnerability binary variables (GLAD baseline aka trauma only), include=FALSE}
+trauma_variables <- 
+  c(
+    "cts.any_maltreatment_binary",
+    "ats.partner_abuse_binary",
+    "ats.catastrophic_trauma_binary"
+   )
+trauma_variables
+```
+
+```{r vector of family history variables, include=FALSE}
+family_history_variables <- 
+  c(
+    "mhfh.anxiety_or_depression_numeric", 
+    "mhfh.other_disorders_numeric"
+   )
+family_history_variables
+```
+
+```{r vector of clinical characteristics, include=FALSE}
+clinical_variables <- 
+  c(
+    "mhd.anxiety_depression_numeric",
+    "mhd.other_diagnoses_numeric",
+    "min_age_of_onset_adjusted",
+    "max_recurrence",
+    "phq9.sum_score",
+    "gad7.sum_score"
+  )
+clinical_variables
+```
+
+```{r vector of genetic variables, include=FALSE}
+genetic_variables <- 
+  c(
+    "anxietyPRS_z",
+    "depression05_PRS_z",
+    "neuroticismPRS_z",
+    "adhdPRS_z",
+    "autismPRS_z",
+    "schizophreniaPRS_z",
+    "educationPRS_z")
+genetic_variables
+```
+
+```{r vector of genetic variables with batch and pcs, include=FALSE}
+genetic_variables_batch_pcs <- 
+  c(
+    "anxietyPRS_z",
+    "depression05_PRS_z",
+    "neuroticismPRS_z",
+    "adhdPRS_z",
+    "autismPRS_z",
+    "schizophreniaPRS_z",
+    "educationPRS_z",
+    "batch_recoded",
+    "PC1",
+    "PC2",
+    "PC3",
+    "PC4",
+    "PC5",
+    "PC6",
+    "PC7",
+    "PC8",
+    "PC9",
+    "PC10"
+    )
+genetic_variables_batch_pcs
+```
+
+```{r all explanatory variables main analysis, include=FALSE}
+all_explanatory_variables_main_analysis <- 
+  c(
+    sociodemographic_variables,
+    trauma_variables,
+    clinical_variables
+    ) 
+
+all_explanatory_variables_main_analysis
+```
+
+```{r all explanatory variables analysis 2a, include=FALSE}
+all_explanatory_variables_analysis_2a <- 
+  c(
+    sociodemographic_variables,
+    trauma_variables,
+    clinical_variables,
+    family_history_variables
+    ) 
+
+all_explanatory_variables_analysis_2a
+```
+
+```{r all explanatory variables analysis 2b, include=FALSE}
+all_explanatory_variables_analysis_2b <- 
+  c(
+    sociodemographic_variables,
+    trauma_variables,
+    clinical_variables,
+    genetic_variables_batch_pcs
+    )
+all_explanatory_variables_analysis_2b
+```
+
+```{r all explanatory variables (for correlation matrix), include=FALSE}
+all_explanatory_variables <- 
+  c(
+    sociodemographic_variables,
+    trauma_variables,
+    clinical_variables,
+    family_history_variables,
+    genetic_variables
+    ) 
+
+all_explanatory_variables
+```
+
+```{r all variables vector for model results tables, include=FALSE}
+#Create vector to order factor for tables
+Variable_ordered_results <- c(
+  "Age",
+  "Female",
+  "University degree",
+  "A-levels or equivalent",
+  "GCSEs or equivalent",
+  "No qualifications",
+  "White",
+  "Childhood trauma",
+  "Adult trauma",
+  "Catastrophic trauma",
+  "Self-reported anxiety/depressive disorder diagnosis",
+  "Other self-reported mental health diagnosis",
+  "Age of onset",
+  "Recurrence",
+  "Current depressive symptoms (PHQ9)",
+  "Current anxiety symptoms (GAD7)",
+  "Family history: Anxiety/depressive disorder",
+  "Family history: Other mental health disorder",
+  "Anxiety PRS",
+  "MDD PRS",
+  "Neuroticism PRS",
+  "ADHD PRS",
+  "Autism PRS",
+  "Schizophrenia PRS",
+  "Educational attainment PRS"
+  )
+```
+
+# Create data subsets
+Subsets of the dataset were used to run the regressions for each output. Chunks were hidden from RMarkdown output.
+The table of N participants included in each model is further down.
+
+## Dataset
+
+```{r subset outcome: MDD-first vs anxiety-first, include=FALSE}
+dat_tempseq <- dat %>% 
+  filter(!is.na(temporal_sequence_binomial_numeric))
+nrow(dat_tempseq)
+```
+
+# Logistic regression functions
+Functions were created to run the logistic regression models. Chunks hidden from RMarkdown output.
+```{r logistic regression model function, include=FALSE}
+model.estimates <- function(outcome, variables, data_set) {
+  # define the variable name of the dependent variable
+  dependent.variable <- outcome
+  # define the independent variables
+  independent.variables <- variables
+  
+  # create the formula
+  glm.formula <- as.formula(paste(dependent.variable, paste(independent.variables, collapse=" + "), sep=" ~ "))
+  glm.formula
+  
+  # run the glm
+  assign(paste0(outcome, ".", variables, ".model"),
+         glm(formula = glm.formula,
+             data = get(data_set),
+             family = "binomial"
+         )
+  )
+  
+  assign(paste0(outcome, ".", variables, ".model_estimates"),
+         tidy(get(paste0(outcome, ".", variables, ".model")), conf.int = TRUE) %>%
+           mutate(
+             "Independent variable" = 
+               recode_factor(
+                 term,
+                "(Intercept)" = "Intercept",
+                "dem.age_adjusted" = "Age",
+                "sample_factor" = "Cohort",
+                "dem.sexFemale" = "Female",
+                "dem.highest_education_ordered_collapsedCollege or university degree" = "University degree",
+                "dem.highest_education_ordered_collapsedO levels/GCSEs or equivalent" = "GCSEs or equivalent",
+                "dem.highest_education_ordered_collapsedA levels/AS levels or equivalent" = "A-levels or equivalent",
+                "dem.ethnicityMixed" = "Mixed or multiple ethnic origins",
+                "dem.ethnicityAsian or Asian British" = "Asian or Asian British",
+                "dem.ethnicityBlack or Black British" = "Black or Black British",
+                "dem.ethnicityArab" = "Arab",
+                "dem.ethnicityOther" = "Other ethnicity",
+                "dem.ethnicity_collapsedMinoritised ethnic group" = "Minoritised ethnic group",
+                "dem.ethnicity_collapsedWhite" = "White",
+                "mhfh.anxiety_or_depression_numeric" = "Family history: Anxiety/depressive disorder",
+                "mhfh.other_disorders_numeric" = "Family history: Other mental health disorder",
+                "cts.any_maltreatment_binaryChildhood maltreatment" = "Childhood trauma",
+                "ats.partner_abuse_binaryPartner abuse" = "Adult trauma",
+                "ats.catastrophic_trauma_binaryCatastrophic trauma" = "Catastrophic trauma",
+                "mhd.anxiety_depression_numeric" = "Self-reported anxiety/depressive disorder diagnosis",
+                "mhd.other_diagnoses_numeric" = "Other self-reported mental health diagnosis",
+                "min_age_of_onset_adjusted" = "Age of onset",
+                "max_recurrence" = "Recurrence",
+                "phq9.sum_score" = "Current depressive symptoms (PHQ9)",
+                "gad7.sum_score" = "Current anxiety symptoms (GAD7)",
+                "anxietyPRS_z" = "Anxiety PRS",
+                "depression05_PRS_z" = "MDD PRS",
+                "neuroticismPRS_z" = "Neuroticism PRS",
+                "adhdPRS_z" = "ADHD PRS",
+                "autismPRS_z" = "Autism PRS",
+                "schizophreniaPRS_z" = "Schizophrenia PRS",
+                "educationPRS_z" = "Educational attainment PRS"
+             ),
+             "Estimate" = format(
+               round(estimate,
+                     digits = 2),
+               nsmall = 2),
+             "95% CI low" = format(
+               round(conf.low,
+                     digits = 2),
+               nsmall = 2),
+             "95% CI up" = format(
+               round(conf.high,
+                     digits = 2),
+               nsmall = 2),
+             "SE" = format(
+               round(std.error,
+                     digits = 2),
+               nsmall = 2),
+             "z score" = format(
+               round(statistic,
+                     digits = 2),
+               nsmall = 2),
+             "adjusted.p.value" = 
+               p.adjust(p.value, method = "fdr"),
+             "adjusted p value" = case_when(
+               adjusted.p.value < 0.001 ~ formatC(adjusted.p.value, format = "e", digits = 2),
+               adjusted.p.value >= 0.001 & adjusted.p.value < 0.01 ~ formatC(adjusted.p.value, format = "f", digits = 3),
+               adjusted.p.value >= 0.01 ~ formatC(adjusted.p.value, format = "f", digits = 2)
+               ),
+             "p value" = case_when(
+               p.value < 0.001 ~ formatC(p.value, format = "e", digits = 2),
+               p.value >= 0.001 & p.value < 0.01 ~ formatC(p.value, format = "f", digits = 3),
+               p.value >= 0.01 ~ formatC(p.value, format = "f", digits = 2)
+             )
+           ) %>%
+           select(
+             "Independent variable",
+             "Estimate",
+             "95% CI low",
+             "95% CI up",
+             "SE",
+             #    "z score",
+             "p value",
+             "adjusted.p.value",
+             "adjusted p value"
+           )  %>% 
+           mutate("Independent variable" = fct_relevel(
+             .f = `Independent variable`,
+             Variable_ordered_results
+             )
+          )
+  )
+  
+  return(get(paste0(outcome, ".", variables, ".model_estimates")))
+}
+
+model.reg.stats <- function(outcome, variables, data_set) {
+  # define the variable name of the dependent variable
+  dependent.variable <- outcome
+  # define the independent variables
+  independent.variables <- variables
+  # create the formula
+  glm.formula <- as.formula(paste(dependent.variable, paste(independent.variables, collapse=" + "), sep=" ~ "))
+  glm.formula
+
+  # run the glm
+  assign(paste0(outcome, ".", variables, "_model"),
+         glm(formula = glm.formula,
+            data = get(data_set),
+            family = "binomial"
+         )
+  )
+
+  assign(
+    paste0(outcome, ".", variables, "_reg_stats"),
+    tidy(
+      get(paste0(outcome, ".", variables, "_model")),
+      exponentiate = T,
+      conf.int = T
+    ) %>%
+      mutate(
+        "Independent variable" = recode_factor(
+          term,
+          "(Intercept)" = "Intercept",
+          "dem.age_adjusted" = "Age",
+          "sample_factorGLAD" = "GLAD cohort",
+          "sample_factorNBR" = "NBR cohort",
+          "dem.sexFemale" = "Female",
+          "dem.highest_education_ordered_collapsedCollege or university degree" = "University degree",
+          "dem.highest_education_ordered_collapsedO levels/GCSEs or equivalent" = "GCSEs or equivalent",
+          "dem.highest_education_ordered_collapsedA levels/AS levels or equivalent" = "A-levels or equivalent",
+          "dem.ethnicityAsian or Asian British" = "Asian or Asian British",
+          "dem.ethnicityBlack or Black British" = "Black or Black British",
+          "dem.ethnicityArab" = "Arab",
+          "dem.ethnicityOther" = "Other ethnicity",
+          "dem.ethnicity_collapsedMinoritised ethnic group" = "Minoritised ethnic group",
+          "dem.ethnicity_collapsedWhite" = "White",
+          "mhfh.anxiety_or_depression_numeric" = "Family history: Anxiety/depressive disorder",
+          "mhfh.other_disorders_numeric" = "Family history: Other mental health disorder",
+          "cts.any_maltreatment_binaryChildhood maltreatment" = "Childhood trauma",
+          "ats.partner_abuse_binaryPartner abuse" = "Adult trauma",
+          "ats.catastrophic_trauma_binaryCatastrophic trauma" = "Catastrophic trauma",
+          "mhd.anxiety_depression_numeric" = "Self-reported anxiety/depressive disorder diagnosis",
+          "mhd.other_diagnoses_numeric" = "Other self-reported mental health diagnosis",
+          "min_age_of_onset_adjusted" = "Age of onset",
+          "max_recurrence" = "Recurrence",
+          "phq9.sum_score" = "Current depressive symptoms (PHQ9)",
+          "gad7.sum_score" = "Current anxiety symptoms (GAD7)",
+          "anxietyPRS_z" = "Anxiety PRS",
+          "depression05_PRS_z" = "MDD PRS",
+          "neuroticismPRS_z" = "Neuroticism PRS",
+          "adhdPRS_z" = "ADHD PRS",
+          "autismPRS_z" = "Autism PRS",
+          "schizophreniaPRS_z" = "Schizophrenia PRS",
+          "educationPRS_z" = "Educational attainment PRS"),
+        OR = format(round(estimate, 2), nsmall=2),
+        "95% CI" = paste0(
+        format(round(conf.low, 2), nsmall = 2),", ",
+        format(round(conf.high, 2), nsmall = 2)),
+        "adjusted.p.value" = 
+           p.adjust(p.value, method = "fdr"),
+        "adjusted p value" = case_when(
+          adjusted.p.value < 0.001 ~ formatC(adjusted.p.value, format = "e", digits = 2),
+          adjusted.p.value >= 0.001 & adjusted.p.value < 0.01 ~ formatC(adjusted.p.value, format = "f", digits = 3),
+          adjusted.p.value >= 0.01 ~ formatC(adjusted.p.value, format = "f", digits = 2)
+        ),
+        "p value" = case_when(
+          p.value < 0.001 ~ formatC(p.value, format = "e", digits = 2),
+          p.value >= 0.001 & p.value < 0.01 ~ formatC(p.value, format = "f", digits = 3),
+          p.value >= 0.01 ~ formatC(p.value, format = "f", digits = 2)
+        )
+      ) %>%
+      select(
+        "Independent variable",
+        OR, 
+        "95% CI", 
+        "p value",
+        "adjusted p value"
+      )  %>% 
+      mutate("Independent variable" = fct_relevel(
+        .f = `Independent variable`,
+        Variable_ordered_results
+        )
+      )
+  )
+
+  return(get(paste0(outcome, ".", variables, "_reg_stats")))
+}
+```
+
+
+# Main analysis
+
+## Logistic regressions
+
+Model Ns dataframe
+```{r create empty model Ns dataframe for main analysis, include=FALSE}
+#Set up the column labels and column names for the Ns datasets for the main analysis models
+model_Ns_labels_main_analysis <- c("Sociodemographic", "Trauma", "Clinical", "Full")
+model_Ns_dataframe_main_analysis <- setNames(data.frame(matrix(ncol = 3, nrow = 4)), c("Outcome", "Model", 
+                                                                                  "N included"#, "N excluded"
+                                                                                  ))
+```
+
+### Outcome: anxiety-first (vs MDD-first)
+
+#### Unadjusted models
+
+*Sociodemographic model, unadjusted*
+```{r tempseq sociodemographic model (all analyses) unadjusted, echo=FALSE}
+# Regression coefficients
+tempseq_sociodemographic_estimates <- model.estimates(outcome = "temporal_sequence_binomial_numeric",
+                                                       variables = sociodemographic_variables,
+                                                       data_set = "dat_tempseq")
+#kable(tempseq_sociodemographic_estimates)
+#tempseq_sociodemographic_estimates
+
+# Regression diagnostic statistics
+tempseq_sociodemographic_reg_stats <- model.reg.stats(outcome = "temporal_sequence_binomial_numeric",
+                                                       variables = sociodemographic_variables,
+                                                       data_set = "dat_tempseq")
+kable(tempseq_sociodemographic_reg_stats)
+#tempseq_sociodemographic_reg_stats
+```
+
+*Vulnerability model, unadjusted, GLAD baseline variables only*  
+Excludes family history variables
+```{r tempseq vulnerability model (main analysis and analysis 2b) unadjusted, echo=FALSE}
+# Regression coefficients
+tempseq_trauma_estimates <- model.estimates(outcome = "temporal_sequence_binomial_numeric",
+                                             variables = trauma_variables,
+                                             data_set = "dat_tempseq")
+#kable(tempseq_trauma_estimates)
+#tempseq_trauma_estimates
+
+# Regression diagnostic statistics
+tempseq_trauma_reg_stats <- model.reg.stats(outcome = "temporal_sequence_binomial_numeric",
+                                             variables = trauma_variables,
+                                             data_set = "dat_tempseq")
+kable(tempseq_trauma_reg_stats)
+#tempseq_trauma_reg_stats
+```
+
+*Clinical model, unadjusted*
+```{r tempseq clinical model (all analyses) unadjusted, echo=FALSE}
+# Regression coefficients
+tempseq_clinical_estimates <- model.estimates(outcome = "temporal_sequence_binomial_numeric",
+                                               variables = clinical_variables,
+                                               data_set = "dat_tempseq")
+#kable(tempseq_clinical_estimates)
+#tempseq_clinical_estimates
+
+# Regression diagnostic statistics
+tempseq_clinical_reg_stats <- model.reg.stats(outcome = "temporal_sequence_binomial_numeric",
+                                               variables = clinical_variables,
+                                               data_set = "dat_tempseq")
+kable(tempseq_clinical_reg_stats)
+#tempseq_clinical_reg_stats
+```
+
+```{r tempseq clinical model no AOO (all analyses) unadjusted, echo=FALSE}
+# Regression coefficients
+tempseq_clinical_estimates_noAOO <- model.estimates(outcome = "temporal_sequence_binomial_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% "min_age_of_onset_adjusted"],
+                                               data_set = "dat_tempseq")
+#kable(tempseq_clinical_estimates_noAOO)
+#tempseq_clinical_estimates_noAOO
+
+# Regression diagnostic statistics
+tempseq_clinical_reg_stats_noAOO <- model.reg.stats(outcome = "temporal_sequence_binomial_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% "min_age_of_onset_adjusted"],
+                                               data_set = "dat_tempseq")
+kable(tempseq_clinical_reg_stats_noAOO)
+#tempseq_clinical_reg_stats_noAOO
+```
+
+```{r tempseq clinical model (without gad7 and AOO) unadjusted, echo=FALSE}
+# Regression coefficients
+tempseq_clinical_estimates_nogad7_noAOO <- model.estimates(outcome = "temporal_sequence_binomial_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% c("gad7.sum_score", "min_age_of_onset_adjusted")],
+                                               data_set = "dat_tempseq")
+#kable(tempseq_clinical_estimates_nogad7_noAOO)
+#tempseq_clinical_estimates_nogad7_noAOO
+
+# Regression diagnostic statistics
+tempseq_clinical_reg_stats_nogad7_noAOO <- model.reg.stats(outcome = "temporal_sequence_binomial_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% c("gad7.sum_score", "min_age_of_onset_adjusted")],
+                                               data_set = "dat_tempseq")
+kable(tempseq_clinical_reg_stats_nogad7_noAOO)
+#tempseq_clinical_reg_stats_nogad7_noAOO
+```
+
+
+##### Check confounding effects on phq9
+
+```{r tempseq clinical model (without gad7) unadjusted, echo=FALSE}
+# Regression coefficients
+tempseq_clinical_estimates_nogad7 <- model.estimates(outcome = "temporal_sequence_binomial_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% "gad7.sum_score"],
+                                               data_set = "dat_tempseq")
+#kable(tempseq_clinical_estimates)
+#tempseq_clinical_estimates
+
+# Regression diagnostic statistics
+tempseq_clinical_reg_stats_nogad7 <- model.reg.stats(outcome = "temporal_sequence_binomial_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% "gad7.sum_score"],
+                                               data_set = "dat_tempseq")
+kable(tempseq_clinical_reg_stats_nogad7)
+#tempseq_clinical_reg_stats
+```
+
+```{r tempseq clinical model (without gad7 and AOO) unadjusted, echo=FALSE}
+# Regression coefficients
+tempseq_clinical_estimates_nogad7_noAOO <- model.estimates(outcome = "temporal_sequence_binomial_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% c("gad7.sum_score", "min_age_of_onset_adjusted")],
+                                               data_set = "dat_tempseq")
+#kable(tempseq_clinical_estimates_nogad7_noAOO)
+#tempseq_clinical_estimates_nogad7_noAOO
+
+# Regression diagnostic statistics
+tempseq_clinical_reg_stats_nogad7_noAOO <- model.reg.stats(outcome = "temporal_sequence_binomial_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% c("gad7.sum_score", "min_age_of_onset_adjusted")],
+                                               data_set = "dat_tempseq")
+kable(tempseq_clinical_reg_stats_nogad7_noAOO)
+#tempseq_clinical_reg_stats_nogad7_noAOO
+```
+
+#### Full model
+All GLAD baseline variables  
+Excludes family history variable  
+Excludes genetic variables
+```{r tempseq full model (main analysis) unadjusted, echo=FALSE}
+# Regression coefficients
+tempseq_all_factors_estimates_main_analysis <- model.estimates(outcome = "temporal_sequence_binomial_numeric",
+                                                                variables = all_explanatory_variables_main_analysis,
+                                                                data_set = "dat_tempseq")
+#kable(tempseq_all_factors_analysis_2b_estimates)
+#tempseq_all_factors_estimates_main_analysis
+
+# Regression diagnostic statistics
+tempseq_all_factors_reg_stats_main_analysis <- model.reg.stats(outcome = "temporal_sequence_binomial_numeric",
+                                                                variables = all_explanatory_variables_main_analysis,
+                                                                data_set = "dat_tempseq")
+kable(tempseq_all_factors_reg_stats_main_analysis)
+#tempseq_all_factors_reg_stats_main_analysis
+```
+
+```{r tempseq full model no AOO (main analysis) unadjusted, echo=FALSE}
+# Regression coefficients
+tempseq_all_factors_estimates_main_analysis_noAOO <- model.estimates(outcome = "temporal_sequence_binomial_numeric",
+                                                                variables = all_explanatory_variables_main_analysis[!all_explanatory_variables_main_analysis %in% "min_age_of_onset_adjusted"],
+                                                                data_set = "dat_tempseq")
+#kable(tempseq_all_factors_estimates_main_analysis_noAOO)
+#tempseq_all_factors_estimates_main_analysis_noAOO
+
+# Regression diagnostic statistics
+tempseq_all_factors_reg_stats_main_analysis_noAOO <- model.reg.stats(outcome = "temporal_sequence_binomial_numeric",
+                                                                variables = all_explanatory_variables_main_analysis[!all_explanatory_variables_main_analysis %in% "min_age_of_onset_adjusted"],
+                                                                data_set = "dat_tempseq")
+kable(tempseq_all_factors_reg_stats_main_analysis_noAOO)
+#tempseq_all_factors_reg_stats_main_analysis_noAOO
+```
+
+
+
+#### Model Ns dataframe
+*tempseq model Ns*  
+Number of participants included in each model
+```{r tempseq model Ns for main analysis, echo=FALSE}
+#Sociodemographic model
+## N included
+tempseq_sociodemographic_N <- dat_tempseq %>% 
+    select(sociodemographic_variables) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Vulnerability model (main analysis and analysis 2b)
+## N included
+tempseq_trauma_N <- dat_tempseq %>% 
+    select(trauma_variables) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Clinical model
+## N included
+tempseq_clinical_N <- dat_tempseq %>% 
+    select(clinical_variables) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Full model (main analysis)
+## N included
+tempseq_full_main_analysis_N <- dat_tempseq %>% 
+    select(all_explanatory_variables_main_analysis) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Dataframe with all values
+tempseq_all_models_included_main_analysis <- c(tempseq_sociodemographic_N, 
+                                                tempseq_trauma_N,  
+                                                tempseq_clinical_N, 
+                                                tempseq_full_main_analysis_N
+                                                )
+
+tempseq_model_Ns_main_analysis <- model_Ns_dataframe_main_analysis %>% 
+  mutate(
+    Outcome = "anxiety-first (vs MDD-first)",
+    Model = model_Ns_labels_main_analysis,
+    `N included` = tempseq_all_models_included_main_analysis
+  )
+#kable(tempseq_model_Ns_main_analysis)
+```
+
+### VIF table
+
+```{r vif main analysis tempseq}
+vif_main_analysis_tempseq <- model.vif(
+  outcome = "temporal_sequence_binomial_numeric",
+  variables = all_explanatory_variables_main_analysis,
+  data_set = "dat_tempseq") %>% 
+  rename(
+    "Anxiety-first (vs MDD-first)" = "temporal_sequence_binomial_numeric"
+  ) %>% 
+  mutate(
+        "Variable" = recode_factor(
+          Variable,
+          "dem.age_adjusted" = "Age",
+          "dem.sex" = "Sex",
+          "dem.highest_education_ordered_collapsed" = "Highest education",
+          "dem.ethnicity_collapsed" = "Ethnicity",
+          "mhfh.anxiety_or_depression_numeric" = "Family history: Anxiety/depressive disorder",
+          "mhfh.other_disorders_numeric" = "Family history: Other mental health disorder",
+          "cts.any_maltreatment_binary" = "Childhood trauma",
+          "ats.partner_abuse_binary" = "Adult trauma",
+          "ats.catastrophic_trauma_binary" = "Catastrophic trauma",
+          "mhd.anxiety_depression_numeric" = "Self-reported anxiety/depressive disorder diagnosis",
+          "mhd.other_diagnoses_numeric" = "Other self-reported mental health diagnosis",
+          "min_age_of_onset_adjusted" = "Age of onset",
+          "max_recurrence" = "Recurrence",
+          "phq9.sum_score" = "Current depressive symptoms (PHQ9)",
+          "gad7.sum_score" = "Current anxiety symptoms (GAD7)",
+          "anxietyPRS_z" = "Anxiety PRS",
+          "depression05_PRS_z" = "MDD PRS",
+          "neuroticismPRS_z" = "Neuroticism PRS",
+          "adhdPRS_z" = "ADHD PRS",
+          "autismPRS_z" = "Autism PRS",
+          "schizophreniaPRS_z" = "Schizophrenia PRS",
+          "educationPRS_z" = "Educational attainment PRS"))
+
+kable(vif_main_analysis_tempseq) 
+```
+
+## Forest Plots
+
+All plots have an adjusted UpperBound
+(UpperBound cut off at 3)
+
+```{r palette for forest, include=FALSE}
+
+forestpal <- c("#993955","#E6C229","#228B22","#2E5077")
+
+```
+
+```{r source forestplot script, include=FALSE}
+source("../anxcmbd_lm_forest_adapted.R")
+```
+
+```{r functions required in book for global assignments for main analysis, echo=FALSE}
+glmoutput_format_main_analysis <- function(lmobject, group, dfname){
+  
+  ## Row labels
+  independent.variables <- c("intercept",
+                             "Age",
+                             "Female",
+                             "University degree",
+                             "A-levels or equivalent",
+                             "GCSEs or equivalent",
+                             # "Mixed or multiple ethnicities",
+                             # "Asian or Asian British",
+                             # "Black or Black British",
+                             # "Other",
+                             #"Minoritised ethnic group",
+                             "White",
+                             "Childhood trauma",
+                             "Adult trauma",
+                             "Catastrophic trauma",
+                             "Anxiety/depressive disorder \ndiagnosis",
+                             "Other mental health \ndiagnosis",
+                             "Age of onset",
+                             "Recurrence",
+                             "Current depressive \nsymptoms",
+                             "Current anxiety \nsymptoms"
+                             )
+                             
+  ## categories to facet on 
+  ### Option 1: Overarching variable categories
+  categories <- c("Intercept",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Trauma",
+                  "Trauma",
+                  "Trauma",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical"#,
+                  #genetic factors here
+                  #"Genetic"
+                  )
+  
+  ## Disorder dimension  
+  groups <- c(group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group#, 
+              #group, add N for N genetic factors
+              )
+  
+  # create data frame
+  df <- lmobject
+  
+  # add row labels
+  df$RowLabels <- independent.variables
+  
+  # Add category labels
+  df$Categories <- categories
+  
+  # Add group labels
+  df$Group <- groups
+  
+  # calculate upper and lower confidence intervals
+  ##logistic regression results include CI - just rename
+  df <- df %>%
+    rename(
+      "LowerBound" = "conf.low",
+      "UpperBound" = "conf.high")
+  
+  # drop intercept row
+  df <- df[(df$RowLabels != 'intercept'),]
+  
+  # order factors
+  df$RowLabels <- factor(df$RowLabels, levels = rev(independent.variables))   ## unadjusted rows
+  df$Categories <- factor(df$Categories, levels = unique(categories))   ## categories
+  
+  
+  # assign dataframe to global environment
+  assign(dfname, df, envir = .GlobalEnv)
+  
+}
+
+glmoutput_format_main_analysis_noAOO <- function(lmobject, group, dfname){
+  
+  ## Row labels
+  independent.variables <- c("intercept",
+                             "Age",
+                             "Female",
+                             "University degree",
+                             "A-levels or equivalent",
+                             "GCSEs or equivalent",
+                             # "Mixed or multiple ethnicities",
+                             # "Asian or Asian British",
+                             # "Black or Black British",
+                             # "Other",
+                             #"Minoritised ethnic group",
+                             "White",
+                             "Childhood trauma",
+                             "Adult trauma",
+                             "Catastrophic trauma",
+                             "Anxiety/depressive disorder \ndiagnosis",
+                             "Other mental health \ndiagnosis",
+                             "Recurrence",
+                             "Current depressive \nsymptoms",
+                             "Current anxiety \nsymptoms"
+                             )
+                             
+  ## categories to facet on 
+  ### Option 1: Overarching variable categories
+  categories <- c("Intercept",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Trauma",
+                  "Trauma",
+                  "Trauma",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical"#,
+                  #genetic factors here
+                  #"Genetic"
+                  )
+  
+  ## Disorder dimension  
+  groups <- c(group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group#, 
+              #group, add N for N genetic factors
+              )
+  
+  # create data frame
+  df <- lmobject
+  
+  # add row labels
+  df$RowLabels <- independent.variables
+  
+  # Add category labels
+  df$Categories <- categories
+  
+  # Add group labels
+  df$Group <- groups
+  
+  # calculate upper and lower confidence intervals
+  ##logistic regression results include CI - just rename
+  df <- df %>%
+    rename(
+      "LowerBound" = "conf.low",
+      "UpperBound" = "conf.high")
+  
+  # drop intercept row
+  df <- df[(df$RowLabels != 'intercept'),]
+  
+  # order factors
+  df$RowLabels <- factor(df$RowLabels, levels = rev(independent.variables))   ## unadjusted rows
+  df$Categories <- factor(df$Categories, levels = unique(categories))   ## categories
+  
+  
+  # assign dataframe to global environment
+  assign(dfname, df, envir = .GlobalEnv)
+  
+}
+
+glmoutput_format_main_analysis_noAOO_noGAD7 <- function(lmobject, group, dfname){
+  
+  ## Row labels
+  independent.variables <- c("intercept",
+                             "Age",
+                             "Female",
+                             "University degree",
+                             "A-levels or equivalent",
+                             "GCSEs or equivalent",
+                             # "Mixed or multiple ethnicities",
+                             # "Asian or Asian British",
+                             # "Black or Black British",
+                             # "Other",
+                             #"Minoritised ethnic group",
+                             "White",
+                             "Childhood trauma",
+                             "Adult trauma",
+                             "Catastrophic trauma",
+                             "Anxiety/depressive disorder \ndiagnosis",
+                             "Other mental health \ndiagnosis",
+                             "Recurrence",
+                             "Current depressive \nsymptoms"
+                             )
+                             
+  ## categories to facet on 
+  ### Option 1: Overarching variable categories
+  categories <- c("Intercept",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Trauma",
+                  "Trauma",
+                  "Trauma",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical"
+                  )
+  
+  ## Disorder dimension  
+  groups <- c(group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group
+              )
+  
+  # create data frame
+  df <- lmobject
+  
+  # add row labels
+  df$RowLabels <- independent.variables
+  
+  # Add category labels
+  df$Categories <- categories
+  
+  # Add group labels
+  df$Group <- groups
+  
+  # calculate upper and lower confidence intervals
+  ##logistic regression results include CI - just rename
+  df <- df %>%
+    rename(
+      "LowerBound" = "conf.low",
+      "UpperBound" = "conf.high")
+  
+  # drop intercept row
+  df <- df[(df$RowLabels != 'intercept'),]
+  
+  # order factors
+  df$RowLabels <- factor(df$RowLabels, levels = rev(independent.variables))   ## unadjusted rows
+  df$Categories <- factor(df$Categories, levels = unique(categories))   ## categories
+  
+  
+  # assign dataframe to global environment
+  assign(dfname, df, envir = .GlobalEnv)
+  
+}
+
+
+model.glm.form_main_analysis <- function(outcome, variables, data_set) {
+  
+  # define the variable name of the dependent variable
+  dependent.variable <- outcome
+  # define the independent variables
+  independent.variables <- variables
+  # create the formula
+  glm.formula <- as.formula(paste(dependent.variable, paste(independent.variables, collapse=" + "), sep=" ~ "))
+  
+  # run the glm
+  assign(paste0(outcome,".glmformula"),
+         glm(formula = glm.formula,
+             data = get(data_set),
+             family = "binomial"
+         )
+  )
+
+  assign(
+    paste0(outcome,"oddsratios.glmformula_analysis_2a"),
+    tidy(
+      get(paste0(outcome,".glmformula")),
+      exponentiate = T,
+      conf.int = T
+    ))
+  
+  return(get(paste0(outcome,"oddsratios.glmformula_analysis_2a")))
+}
+
+```
+
+```{r run main analysis models for all forest plot items, echo=FALSE}
+all.tempseq.glm_main_analysis <-  model.glm.form_main_analysis("temporal_sequence_binomial_numeric",
+                                                               variables = all_explanatory_variables_main_analysis,
+                                                               "dat_tempseq")
+```
+
+```{r generate main analysis datasets for all plots, echo=FALSE}
+# Results grouped by dependent variable
+glmoutput_format_main_analysis(all.tempseq.glm_main_analysis,"anxiety-first (vs MDD-first)", "tempseq.glm.for.plot_main_analysis")
+
+```
+
+```{r forest plot for full model for main analysis, fig.height=14, fig.width=12, dpi=120, echo=FALSE}
+
+plot_text_size=16
+
+foresplot_all_final_models_adj_main_analysis_tempseq <- plot_grid(
+    plot_grid(
+      lm.forest(tempseq.glm.for.plot_main_analysis %>% 
+                filter(Categories=="Sociodemographic"), 
+              title="",
+              colourpal=forestpal,
+              uplim=1.5),
+    lm.forest(tempseq.glm.for.plot_main_analysis %>% 
+                filter(Categories=="Trauma"), 
+              title="",
+              colourpal=forestpal,
+              uplim=1.5),
+    lm.forest(tempseq.glm.for.plot_main_analysis %>% 
+                filter(Categories=="Clinical"), 
+              title="",
+              colourpal=forestpal,
+              uplim=1.5) +
+      theme(
+        axis.title.x = element_text(size = plot_text_size),
+        axis.text.x = element_text(size = plot_text_size)),
+    
+    
+    align = "v",
+    nrow = 3,
+    rel_heights = c(7/22, 4/22, 11/22),
+    hjust = c(0,0,0),
+    vjust = c(1,0,0)
+  ),
+   ggpubr::as_ggplot(cowplot::get_legend(
+     lm.forest(tempseq.glm.for.plot_main_analysis, title="",colourpal=forestpal) +
+      theme(legend.position = c(0.6,0.5),
+            legend.direction = "horizontal",
+            legend.box = "horizontal",
+            legend.box.just = "centre",
+            legend.title = element_blank(),
+            legend.text = element_text(size = plot_text_size),
+            panel.background = element_rect(fill = "white", colour = NA),
+            plot.background = element_rect(fill = "white", colour = NA)) +
+      guides(color = guide_legend(order = 1, reverse = T, nrow=2, byrow=T))
+  )),
+  ncol= 1,
+  nrow = 2,
+  rel_heights = c(1, 0.05)
+)
+
+foresplot_all_final_models_adj_main_analysis_tempseq
+```
+
+```{r save final main analysis results forestplot adjusted, echo=FALSE}
+
+# Initialize file path
+forestplot_main_file_path= paste0(figure_path, "/forestplot_final_model_adj_main_analysis_tempseq_", Sys.Date(), ".jpeg")
+png(height=1000, width=800, file=forestplot_main_file_path, type = "cairo")
+
+# Your function to plot image goes here
+foresplot_all_final_models_adj_main_analysis_tempseq
+
+# Close
+dev.off()
+
+
+## Code below saves with a black background around the plot legend
+# ggsave(paste0("forestplot_final_model_adj_main_analysis_", Sys.Date(), ".jpeg"),
+#        path = figure_path,
+#        plot = foresplot_all_final_models_adj_main_analysis,
+#        width = 12,
+#        height = 14,
+#        dpi = 150,
+#        units = "in")
+```
+
+## Table: Unadjusted + final model results
+
+```{r format final GLM output table for main analysis, include=FALSE}
+full.glm.all.results_for_table_main_analysis_tempseq <- tempseq.glm.for.plot_main_analysis %>% 
+  mutate(
+    RowLabels = fct_recode(
+      .f = RowLabels,
+      "Family history: Anxiety/depressive disorder" = "Family history: \nAnxiety/depressive disorder",
+      "Family history: Other mental health disorder" = "Family history: \nOther mental health disorder",
+      "Self-reported anxiety/depressive disorder diagnosis" = "Anxiety/depressive disorder \ndiagnosis",
+      "Other self-reported mental health diagnosis" = "Other mental health \ndiagnosis",
+      "Current depressive symptoms (PHQ9)" = "Current depressive \nsymptoms",
+      "Current anxiety symptoms (GAD7)" = "Current anxiety \nsymptoms"
+      ),
+    "adjusted.p.value" =
+           p.adjust(p.value, method = "fdr"),
+    "sig.thresholds" =
+      case_when(
+        adjusted.p.value <= 0.001 ~ "***",
+        adjusted.p.value <= 0.01 ~ "**",
+        adjusted.p.value <= 0.05 ~ "*",
+        adjusted.p.value > 0.05 ~ ""
+      ),
+    Value = 
+      paste0(
+        format(round(estimate, 2), nsmall = 2),
+        sig.thresholds,
+        " (", 
+        format(round(LowerBound, 2), nsmall = 2),
+        ", ",
+        format(round(UpperBound, 2), nsmall = 2),
+        ")"
+      )
+  ) %>% 
+  select(Variable = RowLabels,
+         Group,
+         Value) %>% 
+  pivot_wider(names_from = Group,
+              values_from = Value)
+
+full.glm.all.results_for_table_main_analysis_tempseq
+```
+
+```{r format unadjusted GLM tempseq tables for main analysis, include=FALSE}
+tempseq_unadjusted_main_analysis <- rbind(tempseq_sociodemographic_reg_stats,
+                            tempseq_trauma_reg_stats,
+                            tempseq_clinical_reg_stats) %>%
+  mutate(
+    "sig.thresholds" =
+      case_when(
+        as.numeric(`adjusted p value`) <= 0.001 ~ "***",
+        as.numeric(`adjusted p value`) <= 0.01 ~ "**",
+        as.numeric(`adjusted p value`) <= 0.05 ~ "*",
+        as.numeric(`adjusted p value`) > 0.05 ~ ""
+      ),
+    Value = 
+      paste0(
+        format(OR, nsmall=2),
+        sig.thresholds,
+        " (", 
+        `95% CI`,
+        ")"
+      )
+  ) %>% 
+  select(
+    "Variable" = "Independent variable",
+    "Anxiety-first (vs MDD-first) unadjusted models OR (95% CI)" = "Value"
+  ) %>% 
+  filter(
+    Variable != "Intercept"
+  )
+
+tempseq_unadjusted_main_analysis
+```
+
+
+```{r merge unadjusted and final GLM output for main analysis, echo=FALSE}
+glm.all.results_main_analysis_tempseq <- list(tempseq_unadjusted_main_analysis,
+                                      full.glm.all.results_for_table_main_analysis_tempseq) %>%
+  reduce(left_join, by = c("Variable")) %>% 
+  rename(
+    "Anxiety-first (vs MDD-first) full model OR (95% CI)" = "anxiety-first (vs MDD-first)"
+  ) %>% 
+  mutate("Variable" = fct_relevel(
+    .f = Variable,
+    Variable_ordered_results
+    )
+  ) %>% 
+  arrange(Variable)
+
+#glm.all.results_main_analysis
+kable(glm.all.results_main_analysis_tempseq)
+```
+
+### Without AOO
+
+```{r run main analysis model without AOO, echo=FALSE}
+all.tempseq.glm_main_analysis_noAOO <-  model.glm.form_main_analysis("temporal_sequence_binomial_numeric",
+                                                               variables = all_explanatory_variables_main_analysis[!all_explanatory_variables_main_analysis %in% "min_age_of_onset_adjusted"],
+                                                               "dat_tempseq")
+```
+
+```{r generate main analysis dataset without AOO, echo=FALSE}
+# Results grouped by dependent variable
+glmoutput_format_main_analysis_noAOO(all.tempseq.glm_main_analysis_noAOO,"anxiety-first (vs MDD-first)", "tempseq.glm.for.plot_main_analysis_noAOO")
+
+```
+
+```{r format final GLM output table for main analysis WITHOUT AOO, include=FALSE}
+full.glm.all.results_for_table_main_analysis_tempseq_noAOO <- tempseq.glm.for.plot_main_analysis_noAOO %>% 
+  mutate(
+    RowLabels = fct_recode(
+      .f = RowLabels,
+      "Family history: Anxiety/depressive disorder" = "Family history: \nAnxiety/depressive disorder",
+      "Family history: Other mental health disorder" = "Family history: \nOther mental health disorder",
+      "Self-reported anxiety/depressive disorder diagnosis" = "Anxiety/depressive disorder \ndiagnosis",
+      "Other self-reported mental health diagnosis" = "Other mental health \ndiagnosis",
+      "Current depressive symptoms (PHQ9)" = "Current depressive \nsymptoms",
+      "Current anxiety symptoms (GAD7)" = "Current anxiety \nsymptoms"
+      ),
+    "adjusted.p.value" =
+           p.adjust(p.value, method = "fdr"),
+    "sig.thresholds" =
+      case_when(
+        adjusted.p.value <= 0.001 ~ "***",
+        adjusted.p.value <= 0.01 ~ "**",
+        adjusted.p.value <= 0.05 ~ "*",
+        adjusted.p.value > 0.05 ~ ""
+      ),
+    Value = 
+      paste0(
+        format(round(estimate, 2), nsmall = 2),
+        sig.thresholds,
+        " (", 
+        format(round(LowerBound, 2), nsmall = 2),
+        ", ",
+        format(round(UpperBound, 2), nsmall = 2),
+        ")"
+      )
+  ) %>% 
+  select(Variable = RowLabels,
+         Group,
+         Value) %>% 
+  pivot_wider(names_from = Group,
+              values_from = Value)
+
+full.glm.all.results_for_table_main_analysis_tempseq_noAOO
+```
+
+```{r format unadjusted GLM tempseq tables for main analysis WITHOUT AOO, include=FALSE}
+tempseq_unadjusted_main_analysis_noAOO <- rbind(tempseq_sociodemographic_reg_stats,
+                            tempseq_trauma_reg_stats,
+                            tempseq_clinical_reg_stats_noAOO) %>%
+  mutate(
+    "sig.thresholds" =
+      case_when(
+        as.numeric(`adjusted p value`) <= 0.001 ~ "***",
+        as.numeric(`adjusted p value`) <= 0.01 ~ "**",
+        as.numeric(`adjusted p value`) <= 0.05 ~ "*",
+        as.numeric(`adjusted p value`) > 0.05 ~ ""
+      ),
+    Value = 
+      paste0(
+        format(OR, nsmall=2),
+        sig.thresholds,
+        " (", 
+        `95% CI`,
+        ")"
+      )
+  ) %>% 
+  select(
+    "Variable" = "Independent variable",
+    "Anxiety-first (vs MDD-first) unadjusted models OR (95% CI)" = "Value"
+  ) %>% 
+  filter(
+    Variable != "Intercept"
+  )
+
+tempseq_unadjusted_main_analysis_noAOO
+```
+
+
+```{r merge unadjusted and final GLM output for main analysis, echo=FALSE}
+glm.all.results_main_analysis_tempseq_noAOO <- list(tempseq_unadjusted_main_analysis_noAOO,
+                                      full.glm.all.results_for_table_main_analysis_tempseq_noAOO) %>%
+  reduce(left_join, by = c("Variable")) %>% 
+  rename(
+    "Anxiety-first (vs MDD-first) full model OR (95% CI)" = "anxiety-first (vs MDD-first)"
+  ) %>% 
+  mutate("Variable" = fct_relevel(
+    .f = Variable,
+    Variable_ordered_results
+    )
+  ) %>% 
+  arrange(Variable)
+
+#glm.all.results_main_analysis_tempseq_noAOO
+kable(glm.all.results_main_analysis_tempseq_noAOO)
+```
+
+### Table with results from main analysis with/without AOO
+Unadjusted analysis results only displayed with AOO
+
+```{r merge unadjusted and final GLM output for main analysis, echo=FALSE}
+# Prep final table AOO to change column names and distinguish from other results
+full.glm.all.results_for_table_main_analysis_tempseq_noAOO_renamed <- full.glm.all.results_for_table_main_analysis_tempseq_noAOO %>% 
+  rename(
+    "Anxiety-first (vs MDD-first) full model without AOO OR (95% CI)" = "anxiety-first (vs MDD-first)"
+  )
+
+glm.all.results_main_analysis_tempseq_with_and_withoutAOO <- list(glm.all.results_main_analysis_tempseq,
+                                          full.glm.all.results_for_table_main_analysis_tempseq_noAOO_renamed) %>%
+  reduce(left_join, by = c("Variable")) %>% 
+  mutate("Variable" = fct_relevel(
+    .f = Variable,
+    Variable_ordered_results
+    )
+  ) %>% 
+  arrange(Variable)
+
+#glm.all.results_main_analysis_tempseq_with_and_withoutAOO
+kable(glm.all.results_main_analysis_tempseq_with_and_withoutAOO)
+```
+
+### Without AOO and current anxiety symptoms
+
+```{r tempseq clinical model no AOO no GAD7 (all analyses) unadjusted, echo=FALSE}
+# Regression coefficients
+tempseq_clinical_estimates_noAOO_noGAD7 <- model.estimates(outcome = "temporal_sequence_binomial_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% c("min_age_of_onset_adjusted", "gad7.sum_score")],
+                                               data_set = "dat_tempseq")
+#kable(tempseq_clinical_estimates_noAOO_noGAD7)
+#tempseq_clinical_estimates_noAOO_noGAD7
+
+# Regression diagnostic statistics
+tempseq_clinical_reg_stats_noAOO_noGAD7 <- model.reg.stats(outcome = "temporal_sequence_binomial_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% c("min_age_of_onset_adjusted", "gad7.sum_score")],
+                                               data_set = "dat_tempseq")
+kable(tempseq_clinical_reg_stats_noAOO_noGAD7)
+#tempseq_clinical_reg_stats_noAOO_noGAD7
+```
+
+```{r run main analysis model without AOO or GAD7, echo=FALSE}
+all.tempseq.glm_main_analysis_noAOO_noGAD7 <-  model.glm.form_main_analysis("temporal_sequence_binomial_numeric",
+                                                               variables = all_explanatory_variables_main_analysis[!all_explanatory_variables_main_analysis %in% c("min_age_of_onset_adjusted", "gad7.sum_score")],
+                                                               "dat_tempseq")
+```
+
+```{r generate main analysis dataset without AOO or GAD7, echo=FALSE}
+# Results grouped by dependent variable
+glmoutput_format_main_analysis_noAOO_noGAD7(all.tempseq.glm_main_analysis_noAOO_noGAD7,"anxiety-first (vs MDD-first)", "tempseq.glm.for.plot_main_analysis_noAOO_noGAD7")
+
+```
+
+```{r format final GLM output table for main analysis without AOO or GAD7, include=FALSE}
+full.glm.all.results_for_table_main_analysis_tempseq_noAOO_noGAD7 <- tempseq.glm.for.plot_main_analysis_noAOO_noGAD7 %>% 
+  mutate(
+    RowLabels = fct_recode(
+      .f = RowLabels,
+      "Family history: Anxiety/depressive disorder" = "Family history: \nAnxiety/depressive disorder",
+      "Family history: Other mental health disorder" = "Family history: \nOther mental health disorder",
+      "Self-reported anxiety/depressive disorder diagnosis" = "Anxiety/depressive disorder \ndiagnosis",
+      "Other self-reported mental health diagnosis" = "Other mental health \ndiagnosis",
+      "Current depressive symptoms (PHQ9)" = "Current depressive \nsymptoms",
+      "Current anxiety symptoms (GAD7)" = "Current anxiety \nsymptoms"
+      ),
+    "adjusted.p.value" =
+           p.adjust(p.value, method = "fdr"),
+    "sig.thresholds" =
+      case_when(
+        adjusted.p.value <= 0.001 ~ "***",
+        adjusted.p.value <= 0.01 ~ "**",
+        adjusted.p.value <= 0.05 ~ "*",
+        adjusted.p.value > 0.05 ~ ""
+      ),
+    OR_sign = paste0(
+        format(round(estimate,2), nsmall=2, scientific = FALSE),
+        sig.thresholds),
+    CI_nospace = 
+      paste0(
+        "(", 
+        format(round(LowerBound, 2), nsmall=2, scientific = FALSE),
+        ",",
+        format(round(UpperBound, 2), nsmall=2, scientific = FALSE),
+        ")"
+      ),
+    across(where(is.character), str_remove_all, pattern = fixed(" ")),
+    Value = 
+      paste(OR_sign, CI_nospace, sep = " "),
+    across(where(is.character), str_replace, pattern = ",", replacement = ", ")
+  ) %>% 
+  select(Variable = RowLabels,
+         Group,
+         Value) %>% 
+  pivot_wider(names_from = Group,
+              values_from = Value)
+
+full.glm.all.results_for_table_main_analysis_tempseq_noAOO_noGAD7
+```
+
+```{r format unadjusted GLM tempseq tables for main analysis without AOO or GAD7, include=FALSE}
+tempseq_unadjusted_main_analysis_noAOO_noGAD7 <- rbind(tempseq_sociodemographic_reg_stats,
+                            tempseq_trauma_reg_stats,
+                            tempseq_clinical_reg_stats_noAOO_noGAD7) %>%
+  mutate(
+    "sig.thresholds" =
+      case_when(
+        as.numeric(`adjusted p value`) <= 0.001 ~ "***",
+        as.numeric(`adjusted p value`) <= 0.01 ~ "**",
+        as.numeric(`adjusted p value`) <= 0.05 ~ "*",
+        as.numeric(`adjusted p value`) > 0.05 ~ ""
+      ),
+    OR_sign = paste0(
+        format(OR, nsmall=2, scientific = FALSE),
+        sig.thresholds),
+    CI_nospace = 
+      paste0(
+        "(", 
+        format(`95% CI`, nsmall=2, scientific = FALSE),
+        ")"
+      ),
+    across(where(is.character), str_remove_all, pattern = fixed(" ")),
+    Value = 
+      paste(OR_sign, CI_nospace, sep = " "),
+    across(where(is.character), str_replace, pattern = ",", replacement = ", ")
+  ) %>% 
+  select(
+    "Variable" = "Independent variable",
+    "Anxiety-first (vs MDD-first) unadjusted models OR (95% CI)" = "Value"
+  ) %>% 
+  filter(
+    Variable != "Intercept"
+  )
+
+tempseq_unadjusted_main_analysis_noAOO_noGAD7
+```
+
+```{r merge unadjusted and final GLM output for main analysis without AOO or GAD7, echo=FALSE}
+glm.all.results_main_analysis_tempseq_noAOO_noGAD7 <- list(tempseq_unadjusted_main_analysis_noAOO_noGAD7,
+                                      full.glm.all.results_for_table_main_analysis_tempseq_noAOO_noGAD7) %>%
+  reduce(left_join, by = c("Variable")) %>% 
+  rename(
+    "Anxiety-first (vs MDD-first) full model OR (95% CI)" = "anxiety-first(vsMDD-first)"
+  ) %>% 
+  mutate("Variable" = fct_relevel(
+    .f = Variable,
+    Variable_ordered_results
+    )
+  ) %>% 
+  arrange(Variable)
+
+#glm.all.results_main_analysis_tempseq_noAOO_noGAD7
+kable(glm.all.results_main_analysis_tempseq_noAOO_noGAD7)
+```
+
+### Table with results from main analysis with/without AOO and GAD7
+Unadjusted analysis results only displayed with AOO/GAD7
+
+```{r merge unadjusted and final GLM output for main analysis with/without AOO and GAD7, echo=FALSE}
+# Prep final table AOO to change column names and distinguish from other results
+full.glm.all.results_for_table_main_analysis_tempseq_noAOO_noGAD7_renamed <- full.glm.all.results_for_table_main_analysis_tempseq_noAOO_noGAD7 %>% 
+  rename(
+    "Anxiety-first (vs MDD-first) full model without AOO/GAD7 OR (95% CI)" = "anxiety-first(vsMDD-first)"
+  )
+
+glm.all.results_main_analysis_tempseq_with_and_withoutAOO_GAD7 <- list(glm.all.results_main_analysis_tempseq,
+                                          full.glm.all.results_for_table_main_analysis_tempseq_noAOO_noGAD7_renamed) %>%
+  reduce(left_join, by = c("Variable")) %>% 
+  mutate("Variable" = fct_relevel(
+    .f = Variable,
+    Variable_ordered_results
+    )
+  ) %>% 
+  arrange(Variable)
+
+#glm.all.results_main_analysis_tempseq_with_and_withoutAOO_GAD7
+kable(glm.all.results_main_analysis_tempseq_with_and_withoutAOO_GAD7)
+```
+
+
+  
+  
+
+
+# Analysis 2a
+Includes all variables from main analysis + family history of mental health disorder variables  
+
+## Logistic regressions
+
+Model Ns dataframe
+```{r create empty model Ns dataframe for analysis 2a, include=FALSE}
+#Set up the column labels and column names for the Ns datasets for the main analysis models
+model_Ns_labels_analysis_2a <- c("Sociodemographic", "Trauma", "Clinical", "Family history", "Full")
+model_Ns_dataframe_analysis_2a <- setNames(data.frame(matrix(ncol = 3, nrow = 5)), c("Outcome", "Model", 
+                                                                                  "N included"#, "N excluded"
+                                                                                  ))
+```
+
+### Outcome 1
+
+```{r tempseq clinical model no AOO no GAD7 (all analyses) unadjusted, echo=FALSE}
+# Regression coefficients
+tempseq_clinical_estimates_noAOO_noGAD7 <- model.estimates(outcome = "temporal_sequence_binomial_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% c("min_age_of_onset_adjusted", "gad7.sum_score")],
+                                               data_set = "dat_tempseq")
+#kable(tempseq_clinical_estimates_noAOO)
+#tempseq_clinical_estimates_noAOO
+
+# Regression diagnostic statistics
+tempseq_clinical_reg_stats_noAOO_noGAD7 <- model.reg.stats(outcome = "temporal_sequence_binomial_numeric",
+                                               variables = clinical_variables[!clinical_variables %in% c("min_age_of_onset_adjusted", "gad7.sum_score")],
+                                               data_set = "dat_tempseq")
+kable(tempseq_clinical_reg_stats_noAOO_noGAD7)
+#tempseq_clinical_reg_stats_noAOO
+```
+
+*Family history model, unadjusted*  
+```{r tempseq family history model (analysis 2a) unadjusted, echo=FALSE}
+# Regression coefficients
+tempseq_family_history_estimates <- model.estimates(outcome = "temporal_sequence_binomial_numeric",
+                                             variables = family_history_variables,
+                                             data_set = "dat_tempseq")
+#kable(tempseq_family_history_estimates)
+#tempseq_family_history_estimates
+
+# Regression diagnostic statistics
+tempseq_family_history_reg_stats <- model.reg.stats(outcome = "temporal_sequence_binomial_numeric",
+                                             variables = family_history_variables,
+                                             data_set = "dat_tempseq")
+kable(tempseq_family_history_reg_stats)
+#tempseq_family_history_reg_stats
+```
+
+*Full model*  
+Includes family history variables  
+Excludes genetic variables
+```{r tempseq full model (analysis 2a) unadjusted, echo=FALSE}
+# Regression coefficients
+tempseq_all_factors_estimates_analysis_2a <- model.estimates(outcome = "temporal_sequence_binomial_numeric",
+                                                              variables = all_explanatory_variables_analysis_2a,
+                                                              data_set = "dat_tempseq")
+#kable(tempseq_all_factors_estimates)
+#tempseq_all_factors_estimates_analysis_2a
+
+# Regression diagnostic statistics
+tempseq_all_factors_reg_stats_analysis_2a <- model.reg.stats(outcome = "temporal_sequence_binomial_numeric",
+                                                              variables = all_explanatory_variables_analysis_2a,
+                                                              data_set = "dat_tempseq")
+kable(tempseq_all_factors_reg_stats_analysis_2a)
+#tempseq_all_factors_reg_stats_analysis_2a
+```
+
+*tempseq model Ns*  
+Number of participants included in each model
+```{r tempseq model Ns for analysis 2a, echo=FALSE}
+
+#Family history model (analysis 2a)
+## N included
+tempseq_family_history_N <- dat_tempseq %>% 
+    select(family_history_variables) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Full model (analysis 2a)
+## N included
+tempseq_full_analysis_2a_N <- dat_tempseq %>% 
+    select(all_explanatory_variables_analysis_2a) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Dataframe with all values
+tempseq_all_models_included_analysis_2a <- c(tempseq_sociodemographic_N, 
+                                                tempseq_trauma_N, 
+                                                tempseq_clinical_N,  
+                                                tempseq_family_history_N,
+                                                tempseq_full_analysis_2a_N
+                                                )
+
+tempseq_model_Ns_analysis_2a <- model_Ns_dataframe_analysis_2a %>% 
+  mutate(
+    Outcome = "anxiety-first (vs MDD-first)",
+    Model = model_Ns_labels_analysis_2a,
+    `N included` = tempseq_all_models_included_analysis_2a
+  )
+#kable(tempseq_model_Ns_analysis_2a)
+tempseq_model_Ns_analysis_2a
+```
+
+## Combined GLM model Ns table
+
+```{r Ns table for analysis 2a, echo=FALSE}
+kable(tempseq_model_Ns_analysis_2a)
+```
+
+### VIF table
+
+```{r vif analysis 2a tempseq}
+vif_analysis_2a_tempseq <- model.vif(
+  outcome = "temporal_sequence_binomial_numeric",
+  variables = all_explanatory_variables_analysis_2a,
+  data_set = "dat_tempseq") %>% 
+  rename(
+    "Anxiety-first (vs MDD-first)" = "temporal_sequence_binomial_numeric"
+  ) %>% 
+  mutate(
+        "Variable" = recode_factor(
+          Variable,
+          "dem.age_adjusted" = "Age",
+          "dem.sex" = "Sex",
+          "dem.highest_education_ordered_collapsed" = "Highest education",
+          "dem.ethnicity_collapsed" = "Ethnicity",
+          "mhfh.anxiety_or_depression_numeric" = "Family history: Anxiety/depressive disorder",
+          "mhfh.other_disorders_numeric" = "Family history: Other mental health disorder",
+          "cts.any_maltreatment_binary" = "Childhood trauma",
+          "ats.partner_abuse_binary" = "Adult trauma",
+          "ats.catastrophic_trauma_binary" = "Catastrophic trauma",
+          "mhd.anxiety_depression_numeric" = "Self-reported anxiety/depressive disorder diagnosis",
+          "mhd.other_diagnoses_numeric" = "Other self-reported mental health diagnosis",
+          "min_age_of_onset_adjusted" = "Age of onset",
+          "max_recurrence" = "Recurrence",
+          "phq9.sum_score" = "Current depressive symptoms (PHQ9)",
+          "gad7.sum_score" = "Current anxiety symptoms (GAD7)",
+          "anxietyPRS_z" = "Anxiety PRS",
+          "depression05_PRS_z" = "MDD PRS",
+          "neuroticismPRS_z" = "Neuroticism PRS",
+          "adhdPRS_z" = "ADHD PRS",
+          "autismPRS_z" = "Autism PRS",
+          "schizophreniaPRS_z" = "Schizophrenia PRS",
+          "educationPRS_z" = "Educational attainment PRS"))
+
+kable(vif_analysis_2a_tempseq) 
+```
+
+## Forest plots
+
+```{r functions required in book for global assignments without genetics, echo=FALSE}
+glmoutput_format_analysis_2a <- function(lmobject, group, dfname){
+  
+  ## Row labels
+  independent.variables <- c("intercept",
+                             "Age",
+                             "Female",
+                             "University degree",
+                             "A-levels or equivalent",
+                             "GCSEs or equivalent",
+                             "White",
+                             "Childhood trauma",
+                             "Adult trauma",
+                             "Catastrophic trauma",
+                             "Anxiety/depressive disorder \ndiagnosis",
+                             "Other mental health \ndiagnosis",
+                             "Age of onset",
+                             "Recurrence",
+                             "Current depressive \nsymptoms",
+                             "Current anxiety \nsymptoms",
+                             "Family history: \nAnxiety/depressive disorder",
+                             "Family history: \nOther mental health disorder"
+                             #genetic factors here
+                             )
+                             
+  ## categories to facet on 
+  ### Option 1: Overarching variable categories
+  categories <- c("Intercept",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Trauma",
+                  "Trauma",
+                  "Trauma",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Family history",
+                  "Family history"
+                  )
+  
+  ## Disorder dimension  
+  groups <- c(group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group
+              )
+  
+  # create data frame
+  df <- lmobject
+  
+  # add row labels
+  df$RowLabels <- independent.variables
+  
+  # Add category labels
+  df$Categories <- categories
+  
+  # Add group labels
+  df$Group <- groups
+  
+  # calculate upper and lower confidence intervals
+  ##logistic regression results include CI - just rename
+  df <- df %>%
+    rename(
+      "LowerBound" = "conf.low",
+      "UpperBound" = "conf.high")
+  
+  # drop intercept row
+  df <- df[(df$RowLabels != 'intercept'),]
+  
+  # order factors
+  df$RowLabels <- factor(df$RowLabels, levels = rev(independent.variables))   ## unadjusted rows
+  df$Categories <- factor(df$Categories, levels = unique(categories))   ## categories
+  
+  
+  # assign dataframe to global environment
+  assign(dfname, df, envir = .GlobalEnv)
+  
+}
+
+glmoutput_format_analysis_2a_noAOO <- function(lmobject, group, dfname){
+  
+  ## Row labels
+  independent.variables <- c("intercept",
+                             "Age",
+                             "Female",
+                             "University degree",
+                             "A-levels or equivalent",
+                             "GCSEs or equivalent",
+                             "White",
+                             "Childhood trauma",
+                             "Adult trauma",
+                             "Catastrophic trauma",
+                             "Anxiety/depressive disorder \ndiagnosis",
+                             "Other mental health \ndiagnosis",
+                             "Recurrence",
+                             "Current depressive \nsymptoms",
+                             "Current anxiety \nsymptoms",
+                             "Family history: \nAnxiety/depressive disorder",
+                             "Family history: \nOther mental health disorder"
+                             )
+                             
+  ## categories to facet on 
+  ### Option 1: Overarching variable categories
+  categories <- c("Intercept",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Trauma",
+                  "Trauma",
+                  "Trauma",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Family history",
+                  "Family history"
+                  )
+  
+  ## Disorder dimension  
+  groups <- c(group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group
+              )
+  
+  # create data frame
+  df <- lmobject
+  
+  # add row labels
+  df$RowLabels <- independent.variables
+  
+  # Add category labels
+  df$Categories <- categories
+  
+  # Add group labels
+  df$Group <- groups
+  
+  # calculate upper and lower confidence intervals
+  ##logistic regression results include CI - just rename
+  df <- df %>%
+    rename(
+      "LowerBound" = "conf.low",
+      "UpperBound" = "conf.high")
+  
+  # drop intercept row
+  df <- df[(df$RowLabels != 'intercept'),]
+  
+  # order factors
+  df$RowLabels <- factor(df$RowLabels, levels = rev(independent.variables))   ## unadjusted rows
+  df$Categories <- factor(df$Categories, levels = unique(categories))   ## categories
+  
+  
+  # assign dataframe to global environment
+  assign(dfname, df, envir = .GlobalEnv)
+  
+}
+
+glmoutput_format_analysis_2a_noAOO_noGAD7 <- function(lmobject, group, dfname){
+  
+  ## Row labels
+  independent.variables <- c("intercept",
+                             "Age",
+                             "Female",
+                             "University degree",
+                             "A-levels or equivalent",
+                             "GCSEs or equivalent",
+                             "White",
+                             "Childhood trauma",
+                             "Adult trauma",
+                             "Catastrophic trauma",
+                             "Anxiety/depressive disorder \ndiagnosis",
+                             "Other mental health \ndiagnosis",
+                             "Recurrence",
+                             "Current depressive \nsymptoms",
+                             #"Current anxiety \nsymptoms",
+                             "Family history: \nAnxiety/depressive disorder",
+                             "Family history: \nOther mental health disorder"
+                             )
+                             
+  ## categories to facet on 
+  ### Option 1: Overarching variable categories
+  categories <- c("Intercept",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Trauma",
+                  "Trauma",
+                  "Trauma",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  #"Clinical",
+                  "Family history",
+                  "Family history"
+                  )
+  
+  ## Disorder dimension  
+  groups <- c(group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              #group,
+              group
+              )
+  
+  # create data frame
+  df <- lmobject
+  
+  # add row labels
+  df$RowLabels <- independent.variables
+  
+  # Add category labels
+  df$Categories <- categories
+  
+  # Add group labels
+  df$Group <- groups
+  
+  # calculate upper and lower confidence intervals
+  ##logistic regression results include CI - just rename
+  df <- df %>%
+    rename(
+      "LowerBound" = "conf.low",
+      "UpperBound" = "conf.high")
+  
+  # drop intercept row
+  df <- df[(df$RowLabels != 'intercept'),]
+  
+  # order factors
+  df$RowLabels <- factor(df$RowLabels, levels = rev(independent.variables))   ## unadjusted rows
+  df$Categories <- factor(df$Categories, levels = unique(categories))   ## categories
+  
+  
+  # assign dataframe to global environment
+  assign(dfname, df, envir = .GlobalEnv)
+  
+}
+
+model.glm.form_analysis_2a <- function(outcome, variables, data_set) {
+  
+  # define the variable name of the dependent variable
+  dependent.variable <- outcome
+  # define the independent variables
+  independent.variables <- variables
+  # create the formula
+  glm.formula <- as.formula(paste(dependent.variable, paste(independent.variables, collapse=" + "), sep=" ~ "))
+  
+  # run the glm
+  assign(paste0(outcome,".glmformula"),
+         glm(formula = glm.formula,
+             data = get(data_set),
+             family = "binomial"
+         )
+  )
+
+  assign(
+    paste0(outcome,"oddsratios.glmformula_analysis_2a"),
+    tidy(
+      get(paste0(outcome,".glmformula")),
+      exponentiate = T,
+      conf.int = T
+    ))
+  
+  return(get(paste0(outcome,"oddsratios.glmformula_analysis_2a")))
+}
+
+```
+
+```{r run analysis 2a models for all forest plot items, echo=FALSE}
+all.tempseq.glm_analysis_2a <-  model.glm.form_analysis_2a("temporal_sequence_binomial_numeric",
+                                                           variables = all_explanatory_variables_analysis_2a,
+                                                           "dat_tempseq")
+```
+
+```{r generate analysis 2a datasets for all plots, echo=FALSE}
+# Results grouped by dependent variable
+glmoutput_format_analysis_2a(all.tempseq.glm_analysis_2a, "anxiety-first (vs MDD-first)", "tempseq.glm.for.plot_analysis_2a")
+```
+
+#### plot with adjusted upperBound
+
+```{r forest plot adjusted UpperBound for full models for analysis 2a, fig.height=14, fig.width=12, dpi=120, echo=FALSE}
+
+plot_text_size=16
+
+foresplot_all_final_models_adj_analysis_2a_tempseq <- plot_grid(
+  plot_grid(
+    lm.forest(tempseq.glm.for.plot_analysis_2a %>% 
+                filter(Categories=="Sociodemographic"), 
+              title="",
+              colourpal=forestpal,
+              uplim=3),
+    lm.forest(tempseq.glm.for.plot_analysis_2a %>% 
+                filter(Categories=="Trauma"), 
+              title="",
+              colourpal=forestpal,
+              uplim=3),
+    lm.forest(tempseq.glm.for.plot_analysis_2a %>% 
+                filter(Categories=="Clinical"), 
+              title="",
+              colourpal=forestpal,
+              uplim=3),
+      lm.forest(tempseq.glm.for.plot_analysis_2a %>%
+                filter(Categories=="Family history"),
+              title="",
+              colourpal=forestpal,
+              uplim=3) +
+      theme(
+        axis.title.x = element_text(size = plot_text_size),
+        axis.text.x = element_text(size = plot_text_size)),
+    
+    
+    align = "v",
+    nrow = 4,
+    rel_heights = c(4/14, 2/14, 5/14, 3/14),
+    hjust = c(0,0,0,0),
+    vjust = c(1,0,0,0)
+  ),
+   ggpubr::as_ggplot(cowplot::get_legend(
+     lm.forest(tempseq.glm.for.plot_analysis_2a, title="",colourpal=forestpal) +
+      theme(legend.position = c(0.6,0.5),
+            legend.direction = "horizontal",
+            legend.box = "horizontal",
+            legend.box.just = "centre",
+            legend.title = element_blank(),
+            legend.text = element_text(size = plot_text_size)) +
+      guides(color = guide_legend(order = 1, reverse = T, nrow=2, byrow=T))
+  )),
+  ncol= 1,
+  nrow = 2,
+  rel_heights = c(1, 0.05)
+)
+
+foresplot_all_final_models_adj_analysis_2a_tempseq
+```
+
+```{r save final analysis 2a model results forestplot adjusted, echo=FALSE}
+ggsave(paste0("forestplot_final_model_adj_analysis_2a_tempseq_", Sys.Date(), ".jpeg"),
+       path = figure_path,
+       plot = foresplot_all_final_models_adj_analysis_2a_tempseq,
+       width = 12,
+       height = 14,
+       dpi = 150,
+       units = "in")
+```
+
+## Table: Unadjusted + final model results
+
+```{r format final GLM output table for analysis 2a, include=FALSE}
+full.glm.all.results_for_table_analysis_2a_tempseq <- tempseq.glm.for.plot_analysis_2a %>% 
+  mutate(
+    RowLabels = fct_recode(
+      .f = RowLabels,
+      "Family history: Anxiety/depressive disorder" = "Family history: \nAnxiety/depressive disorder",
+      "Family history: Other mental health disorder" = "Family history: \nOther mental health disorder",
+      "Self-reported anxiety/depressive disorder diagnosis" = "Anxiety/depressive disorder \ndiagnosis",
+      "Other self-reported mental health diagnosis" = "Other mental health \ndiagnosis",
+      "Current depressive symptoms (PHQ9)" = "Current depressive \nsymptoms",
+      "Current anxiety symptoms (GAD7)" = "Current anxiety \nsymptoms"
+      ),
+    "adjusted.p.value" =
+           p.adjust(p.value, method = "fdr"),
+    "sig.thresholds" =
+      case_when(
+        adjusted.p.value <= 0.001 ~ "***",
+        adjusted.p.value <= 0.01 ~ "**",
+        adjusted.p.value <= 0.05 ~ "*",
+        adjusted.p.value > 0.05 ~ ""
+      ),
+    Value = 
+      paste0(
+        format(round(estimate, 2), nsmall = 2),
+        sig.thresholds,
+        " (", 
+        format(round(LowerBound, 2), nsmall = 2),
+        ", ",
+        format(round(UpperBound, 2), nsmall = 2),
+        ")"
+      )
+  ) %>% 
+  select(Variable = RowLabels,
+         Group,
+         Value) %>% 
+  pivot_wider(names_from = Group,
+              values_from = Value)
+
+full.glm.all.results_for_table_analysis_2a_tempseq
+```
+
+```{r format unadjusted GLM tempseq tables for analysis 2a, include=FALSE}
+tempseq_unadjusted_analysis_2a <- rbind(tempseq_sociodemographic_reg_stats,
+                            tempseq_trauma_reg_stats,
+                            tempseq_clinical_reg_stats,
+                            tempseq_family_history_reg_stats) %>%
+  mutate(
+    "sig.thresholds" =
+      case_when(
+        as.numeric(`adjusted p value`) <= 0.001 ~ "***",
+        as.numeric(`adjusted p value`) <= 0.01 ~ "**",
+        as.numeric(`adjusted p value`) <= 0.05 ~ "*",
+        as.numeric(`adjusted p value`) > 0.05 ~ ""
+      ),
+    Value = 
+      paste0(
+        format(OR, nsmall=2),
+        sig.thresholds,
+        " (", 
+        `95% CI`,
+        ")"
+      )
+  ) %>% 
+  select(
+    "Variable" = "Independent variable",
+    "Anxiety-first (vs MDD-first) unadjusted models OR (95% CI)" = "Value"
+  ) %>% 
+  filter(
+    Variable != "Intercept"
+  )
+
+tempseq_unadjusted_analysis_2a
+```
+
+### Unadjusted and full model results
+
+```{r merge unadjusted and all factors GLM output table for analysis 2a, echo=FALSE}
+glm.unadjusted.table.all_analysis_2a_tempseq <- list(tempseq_unadjusted_analysis_2a,
+                                             full.glm.all.results_for_table_analysis_2a_tempseq) %>%
+  reduce(left_join, by = c("Variable")) %>% 
+  rename(
+    "Anxiety-first (vs MDD-first) full model OR (95% CI)" = "anxiety-first (vs MDD-first)"
+  ) %>% 
+  mutate("Variable" = fct_relevel(
+    .f = Variable,
+    Variable_ordered_results
+    )
+  ) %>% 
+  arrange(Variable)
+
+#glm.unadjusted.table.all_analysis_2a_tempseq
+kable(glm.unadjusted.table.all_analysis_2a_tempseq)
+```
+  
+## Without AOO & GAD7
+
+```{r run analysis 2a model without AOO & GAD7, echo=FALSE}
+all.tempseq.glm_analysis_2a_noAOO_noGAD7 <-  model.glm.form_analysis_2a("temporal_sequence_binomial_numeric",
+                                                               variables = all_explanatory_variables_analysis_2a[!all_explanatory_variables_analysis_2a %in% c("min_age_of_onset_adjusted", "gad7.sum_score")],
+                                                               "dat_tempseq")
+```
+
+```{r generate analysis 2a dataset without AOO & GAD7, echo=FALSE}
+# Results grouped by dependent variable
+glmoutput_format_analysis_2a_noAOO_noGAD7(all.tempseq.glm_analysis_2a_noAOO_noGAD7,"anxiety-first (vs MDD-first)", "tempseq.glm.for.plot_analysis_2a_noAOO_noGAD7")
+
+```
+
+```{r format final GLM output table for analysis 2a without AOO & GAD7, include=FALSE}
+full.glm.all.results_for_table_analysis_2a_tempseq_noAOO_noGAD7 <- tempseq.glm.for.plot_analysis_2a_noAOO_noGAD7 %>% 
+  mutate(
+    RowLabels = fct_recode(
+      .f = RowLabels,
+      "Family history: Anxiety/depressive disorder" = "Family history: \nAnxiety/depressive disorder",
+      "Family history: Other mental health disorder" = "Family history: \nOther mental health disorder",
+      "Self-reported anxiety/depressive disorder diagnosis" = "Anxiety/depressive disorder \ndiagnosis",
+      "Other self-reported mental health diagnosis" = "Other mental health \ndiagnosis",
+      "Current depressive symptoms (PHQ9)" = "Current depressive \nsymptoms",
+      "Current anxiety symptoms (GAD7)" = "Current anxiety \nsymptoms"
+      ),
+    "adjusted.p.value" =
+           p.adjust(p.value, method = "fdr"),
+    "sig.thresholds" =
+      case_when(
+        adjusted.p.value <= 0.001 ~ "***",
+        adjusted.p.value <= 0.01 ~ "**",
+        adjusted.p.value <= 0.05 ~ "*",
+        adjusted.p.value > 0.05 ~ ""
+      ),
+    Value = 
+      paste0(
+        format(round(estimate, 2), nsmall = 2),
+        sig.thresholds,
+        " (", 
+        format(round(LowerBound, 2), nsmall = 2),
+        ", ",
+        format(round(UpperBound, 2), nsmall = 2),
+        ")"
+      )
+  ) %>% 
+  select(Variable = RowLabels,
+         Group,
+         Value) %>% 
+  pivot_wider(names_from = Group,
+              values_from = Value)
+
+full.glm.all.results_for_table_analysis_2a_tempseq_noAOO_noGAD7
+```
+
+```{r format unadjusted GLM tempseq tables without AOO & GAD7 for analysis 2a, include=FALSE}
+tempseq_unadjusted_analysis_2a_noAOO_noGAD7 <- rbind(tempseq_sociodemographic_reg_stats,
+                            tempseq_trauma_reg_stats,
+                            tempseq_clinical_reg_stats_noAOO_noGAD7,
+                            tempseq_family_history_reg_stats) %>%
+  mutate(
+    "sig.thresholds" =
+      case_when(
+        as.numeric(`adjusted p value`) <= 0.001 ~ "***",
+        as.numeric(`adjusted p value`) <= 0.01 ~ "**",
+        as.numeric(`adjusted p value`) <= 0.05 ~ "*",
+        as.numeric(`adjusted p value`) > 0.05 ~ ""
+      ),
+    Value = 
+      paste0(
+        format(OR, nsmall=2),
+        sig.thresholds,
+        " (", 
+        `95% CI`,
+        ")"
+      )
+  ) %>% 
+  select(
+    "Variable" = "Independent variable",
+    "Anxiety-first (vs MDD-first) unadjusted models OR (95% CI)" = "Value"
+  ) %>% 
+  filter(
+    Variable != "Intercept"
+  )
+
+tempseq_unadjusted_analysis_2a_noAOO_noGAD7
+```
+
+### Unadjusted and full model results
+
+```{r merge unadjusted and all factors GLM output table for analysis 2a without AOO, echo=FALSE}
+glm.unadjusted.table.all_analysis_2a_tempseq_noAOO <- list(tempseq_unadjusted_analysis_2a_noAOO_noGAD7,
+                                             full.glm.all.results_for_table_analysis_2a_tempseq_noAOO_noGAD7) %>%
+  reduce(left_join, by = c("Variable")) %>% 
+  rename(
+    "Anxiety-first (vs MDD-first) full model OR (95% CI)" = "anxiety-first (vs MDD-first)"
+  ) %>% 
+  mutate("Variable" = fct_relevel(
+    .f = Variable,
+    Variable_ordered_results
+    )
+  ) %>% 
+  arrange(Variable)
+
+#glm.unadjusted.table.all_analysis_2a_tempseq_noAOO
+kable(glm.unadjusted.table.all_analysis_2a_tempseq_noAOO)
+```
+
+
+
+# Analysis 2b
+Includes all variables from main analysis + genetic factors  
+
+## Logistic regressions
+Model Ns dataframe
+```{r create empty model Ns dataframe for analysis 2b, include=FALSE}
+#Set up the column labels and column names for the Ns datasets for the main analysis models
+model_Ns_labels_analysis_2b <- c("Sociodemographic", "Trauma", "Clinical", "Genetic", "Full")
+model_Ns_dataframe_analysis_2b <- setNames(data.frame(matrix(ncol = 3, nrow = 5)), c("Outcome", "Model", 
+                                                                                  "N included"#, "N excluded"
+                                                                                  ))
+```
+
+*Genetic model, unadjusted*
+```{r tempseq genetic model unadjusted, echo=FALSE}
+# Regression coefficients
+tempseq_genetic_estimates <- model.estimates(outcome = "temporal_sequence_binomial_numeric",
+                                              variables = genetic_variables_batch_pcs,
+                                              data_set = "dat_tempseq")
+#kable(tempseq_genetic_estimates)
+#tempseq_genetic_estimates
+
+# Regression diagnostic statistics
+tempseq_genetic_reg_stats <- model.reg.stats(outcome = "temporal_sequence_binomial_numeric",
+                                              variables = genetic_variables_batch_pcs,
+                                              data_set = "dat_tempseq")
+kable(tempseq_genetic_reg_stats)
+#tempseq_genetic_reg_stats
+```
+
+*Full model * 
+All GLAD baseline variables  
+Includes genetic variables  
+Excludes family history variables  
+```{r tempseq full baseline model (analysis 2b) unadjusted, echo=FALSE}
+# Regression coefficients
+tempseq_all_factors_estimates_analysis_2b <- model.estimates(outcome = "temporal_sequence_binomial_numeric",
+                                                            variables = all_explanatory_variables_analysis_2b,
+                                                            data_set = "dat_tempseq")
+#kable(tempseq_all_factors_estimates_analysis_2b)
+#tempseq_all_factors_estimates_analysis_2b
+
+# Regression diagnostic statistics
+tempseq_all_factors_reg_stats_analysis_2b <- model.reg.stats(outcome = "temporal_sequence_binomial_numeric",
+                                                            variables = all_explanatory_variables_analysis_2b,
+                                                            data_set = "dat_tempseq")
+kable(tempseq_all_factors_reg_stats_analysis_2b)
+#tempseq_all_factors_reg_stats_analysis_2b
+```
+
+*tempseq model Ns*  
+Number of participants included in each model
+```{r tempseq model Ns for analysis 2b, echo=FALSE}
+#Genetic model
+## N included
+tempseq_genetic_N <- dat_tempseq %>% 
+    select(genetic_variables_batch_pcs) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Full model (analysis 2b)
+## N included
+tempseq_full_analysis_2b_N <- dat_tempseq %>% 
+    select(all_explanatory_variables_analysis_2b) %>% 
+    drop_na() %>% 
+    nrow()
+
+#Dataframe with all values
+tempseq_all_models_included_analysis_2b <- c(tempseq_sociodemographic_N, 
+                                              tempseq_trauma_N,  
+                                              tempseq_clinical_N, 
+                                              tempseq_genetic_N, 
+                                              tempseq_full_analysis_2b_N)
+tempseq_model_Ns_analysis_2b <- model_Ns_dataframe_analysis_2b %>% 
+  mutate(
+    Outcome = "anxiety-first (vs MDD-first)",
+    Model = model_Ns_labels_analysis_2b,
+    `N included` = tempseq_all_models_included_analysis_2b
+  )
+kable(tempseq_model_Ns_analysis_2b)
+```
+
+### VIF table
+
+```{r vif analysis 2b tempseq}
+vif_analysis_2b_tempseq <- model.vif(
+  outcome = "temporal_sequence_binomial_numeric",
+  variables = all_explanatory_variables_analysis_2b,
+  data_set = "dat_tempseq") %>% 
+  rename(
+    "Anxiety-first (vs MDD-first)" = "temporal_sequence_binomial_numeric"
+  ) %>% 
+  mutate(
+        "Variable" = recode_factor(
+          Variable,
+          "dem.age_adjusted" = "Age",
+          "dem.sex" = "Sex",
+          "dem.highest_education_ordered_collapsed" = "Highest education",
+          "dem.ethnicity_collapsed" = "Ethnicity",
+          "mhfh.anxiety_or_depression_numeric" = "Family history: Anxiety/depressive disorder",
+          "mhfh.other_disorders_numeric" = "Family history: Other mental health disorder",
+          "cts.any_maltreatment_binary" = "Childhood trauma",
+          "ats.partner_abuse_binary" = "Adult trauma",
+          "ats.catastrophic_trauma_binary" = "Catastrophic trauma",
+          "mhd.anxiety_depression_numeric" = "Self-reported anxiety/depressive disorder diagnosis",
+          "mhd.other_diagnoses_numeric" = "Other self-reported mental health diagnosis",
+          "min_age_of_onset_adjusted" = "Age of onset",
+          "max_recurrence" = "Recurrence",
+          "phq9.sum_score" = "Current depressive symptoms (PHQ9)",
+          "gad7.sum_score" = "Current anxiety symptoms (GAD7)",
+          "anxietyPRS_z" = "Anxiety PRS",
+          "depression05_PRS_z" = "MDD PRS",
+          "neuroticismPRS_z" = "Neuroticism PRS",
+          "adhdPRS_z" = "ADHD PRS",
+          "autismPRS_z" = "Autism PRS",
+          "schizophreniaPRS_z" = "Schizophrenia PRS",
+          "educationPRS_z" = "Educational attainment PRS"))
+
+kable(vif_analysis_2b_tempseq)
+```
+
+## Forest plot
+
+```{r functions required in book for global assignments for analysis 2b models, echo=FALSE}
+glmoutput_format_analysis_2b <- function(lmobject, group, dfname){
+  
+  ## Row labels
+  independent.variables <- c("intercept",
+                             "Age",
+                             "Female",
+                             "University degree",
+                             "A-levels or equivalent",
+                             "GCSEs or equivalent",
+                             "White",
+                             "Childhood trauma",
+                             "Adult trauma",
+                             "Catastrophic trauma",
+                             "Anxiety/depressive disorder \ndiagnosis",
+                             "Other mental health \ndiagnosis",
+                             "Age of onset",
+                             "Recurrence",
+                             "Current depressive \nsymptoms",
+                             "Current anxiety \nsymptoms",
+                             "Anxiety PRS",
+                             "MDD PRS",
+                             "Neuroticism PRS",
+                             "ADHD PRS",
+                             "Autism PRS",
+                             "Schizophrenia PRS",
+                             "Educational attainment PRS",
+                             "GLAD genotyping batch set 1",
+                             "GLAD genotyping batch set 2",
+                             "GLAD genotyping batch set 3",
+                             "COPING NBR batch set 1",
+                             "COPING NBR batch set 2",
+                             "COPING NBR batch set 3",
+                             "PC1",
+                             "PC2",
+                             "PC3",
+                             "PC4",
+                             "PC5",
+                             "PC6",
+                             "PC7",
+                             "PC8",
+                             "PC9",
+                             "PC10"
+                             )
+                             
+  ## categories to facet on 
+  ### Option 1: Overarching variable categories
+  categories <- c("Intercept",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Trauma",
+                  "Trauma",
+                  "Trauma",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Genetic",
+                  "Genetic",
+                  "Genetic",
+                  "Genetic",
+                  "Genetic",
+                  "Genetic",
+                  "Genetic",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates"
+                  )
+ 
+  ## Disorder dimension  
+  groups <- c(group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group
+              )
+  
+  # create data frame
+  df <- lmobject
+  
+  # add row labels
+  df$RowLabels <- independent.variables
+  
+  # Add category labels
+  df$Categories <- categories
+  
+  # Add group labels
+  df$Group <- groups
+  
+  # calculate upper and lower confidence intervals
+  ##logistic regression results include CI - just rename
+  df <- df %>%
+    rename(
+      "LowerBound" = "conf.low",
+      "UpperBound" = "conf.high")
+  
+  # drop intercept row
+  df <- df[(df$RowLabels != 'intercept'),]
+  
+  # order factors
+  df$RowLabels <- factor(df$RowLabels, levels = rev(independent.variables))   ## unadjusted rows
+  df$Categories <- factor(df$Categories, levels = unique(categories))   ## categories
+  
+  
+  # assign dataframe to global environment
+  assign(dfname, df, envir = .GlobalEnv)
+  
+}
+
+glmoutput_format_analysis_2b_noAOO <- function(lmobject, group, dfname){
+  
+  ## Row labels
+  independent.variables <- c("intercept",
+                             "Age",
+                             "Female",
+                             "University degree",
+                             "A-levels or equivalent",
+                             "GCSEs or equivalent",
+                             "White",
+                             "Childhood trauma",
+                             "Adult trauma",
+                             "Catastrophic trauma",
+                             "Anxiety/depressive disorder \ndiagnosis",
+                             "Other mental health \ndiagnosis",
+                             "Recurrence",
+                             "Current depressive \nsymptoms",
+                             "Current anxiety \nsymptoms",
+                             "Anxiety PRS",
+                             "MDD PRS",
+                             "Neuroticism PRS",
+                             "ADHD PRS",
+                             "Autism PRS",
+                             "Schizophrenia PRS",
+                             "Educational attainment PRS",
+                             "GLAD genotyping batch set 1",
+                             "GLAD genotyping batch set 2",
+                             "GLAD genotyping batch set 3",
+                             "COPING NBR batch set 1",
+                             "COPING NBR batch set 2",
+                             "COPING NBR batch set 3",
+                             "PC1",
+                             "PC2",
+                             "PC3",
+                             "PC4",
+                             "PC5",
+                             "PC6",
+                             "PC7",
+                             "PC8",
+                             "PC9",
+                             "PC10"
+                             )
+                             
+  ## categories to facet on 
+  ### Option 1: Overarching variable categories
+  categories <- c("Intercept",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Trauma",
+                  "Trauma",
+                  "Trauma",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Genetic",
+                  "Genetic",
+                  "Genetic",
+                  "Genetic",
+                  "Genetic",
+                  "Genetic",
+                  "Genetic",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates"
+                  )
+ 
+  ## Disorder dimension  
+  groups <- c(group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group
+              )
+  
+  # create data frame
+  df <- lmobject
+  
+  # add row labels
+  df$RowLabels <- independent.variables
+  
+  # Add category labels
+  df$Categories <- categories
+  
+  # Add group labels
+  df$Group <- groups
+  
+  # calculate upper and lower confidence intervals
+  ##logistic regression results include CI - just rename
+  df <- df %>%
+    rename(
+      "LowerBound" = "conf.low",
+      "UpperBound" = "conf.high")
+  
+  # drop intercept row
+  df <- df[(df$RowLabels != 'intercept'),]
+  
+  # order factors
+  df$RowLabels <- factor(df$RowLabels, levels = rev(independent.variables))   ## unadjusted rows
+  df$Categories <- factor(df$Categories, levels = unique(categories))   ## categories
+  
+  
+  # assign dataframe to global environment
+  assign(dfname, df, envir = .GlobalEnv)
+  
+}
+
+glmoutput_format_analysis_2b_noAOO_noGAD7 <- function(lmobject, group, dfname){
+  
+  ## Row labels
+  independent.variables <- c("intercept",
+                             "Age",
+                             "Female",
+                             "University degree",
+                             "A-levels or equivalent",
+                             "GCSEs or equivalent",
+                             "White",
+                             "Childhood trauma",
+                             "Adult trauma",
+                             "Catastrophic trauma",
+                             "Anxiety/depressive disorder \ndiagnosis",
+                             "Other mental health \ndiagnosis",
+                             "Recurrence",
+                             "Current depressive \nsymptoms",
+                             "Anxiety PRS",
+                             "MDD PRS",
+                             "Neuroticism PRS",
+                             "ADHD PRS",
+                             "Autism PRS",
+                             "Schizophrenia PRS",
+                             "Educational attainment PRS",
+                             "GLAD genotyping batch set 1",
+                             "GLAD genotyping batch set 2",
+                             "GLAD genotyping batch set 3",
+                             "COPING NBR batch set 1",
+                             "COPING NBR batch set 2",
+                             "COPING NBR batch set 3",
+                             "PC1",
+                             "PC2",
+                             "PC3",
+                             "PC4",
+                             "PC5",
+                             "PC6",
+                             "PC7",
+                             "PC8",
+                             "PC9",
+                             "PC10"
+                             )
+                             
+  ## categories to facet on 
+  ### Option 1: Overarching variable categories
+  categories <- c("Intercept",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Sociodemographic",
+                  "Trauma",
+                  "Trauma",
+                  "Trauma",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Clinical",
+                  "Genetic",
+                  "Genetic",
+                  "Genetic",
+                  "Genetic",
+                  "Genetic",
+                  "Genetic",
+                  "Genetic",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates",
+                  "Covariates"
+                  )
+ 
+  ## Disorder dimension  
+  groups <- c(group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group,
+              group
+              )
+  
+  # create data frame
+  df <- lmobject
+  
+  # add row labels
+  df$RowLabels <- independent.variables
+  
+  # Add category labels
+  df$Categories <- categories
+  
+  # Add group labels
+  df$Group <- groups
+  
+  # calculate upper and lower confidence intervals
+  ##logistic regression results include CI - just rename
+  df <- df %>%
+    rename(
+      "LowerBound" = "conf.low",
+      "UpperBound" = "conf.high")
+  
+  # drop intercept row
+  df <- df[(df$RowLabels != 'intercept'),]
+  
+  # order factors
+  df$RowLabels <- factor(df$RowLabels, levels = rev(independent.variables))   ## unadjusted rows
+  df$Categories <- factor(df$Categories, levels = unique(categories))   ## categories
+  
+  
+  # assign dataframe to global environment
+  assign(dfname, df, envir = .GlobalEnv)
+  
+}
+
+model.glm.form_analysis_2b <- function(outcome, variables, data_set) {
+  
+  # define the variable name of the dependent variable
+  dependent.variable <- outcome
+  # define the independent variables
+  independent.variables <- variables
+  # create the formula
+  glm.formula <- as.formula(paste(dependent.variable, paste(independent.variables, collapse=" + "), sep=" ~ "))
+  
+  # run the glm
+  assign(paste0(outcome,".glmformula"),
+         glm(formula = glm.formula,
+             data = get(data_set),
+             family = "binomial"
+         )
+  )
+
+  assign(
+    paste0(outcome,"oddsratios.glmformula"),
+    tidy(
+      get(paste0(outcome,".glmformula")),
+      exponentiate = T,
+      conf.int = T
+    ))
+  
+  return(get(paste0(outcome,"oddsratios.glmformula")))
+}
+
+```
+
+```{r run models for all analysis 2b forest plot items, echo=FALSE}
+
+all.tempseq.glm_analysis_2b <-  model.glm.form_analysis_2b("temporal_sequence_binomial_numeric",
+                                                           variables = all_explanatory_variables_analysis_2b,
+                                                           "dat_tempseq")
+```
+
+```{r generate analysis 2b datasets for all plots, echo=FALSE}
+# Results grouped by dependent variable
+glmoutput_format_analysis_2b(all.tempseq.glm_analysis_2b,"anxiety-first (vs MDD-first)", "tempseq.glm.for.plot_analysis_2b")
+```
+
+```{r forest plot adjusted UpperBound for analysis 2b full models, fig.height=14, fig.width=12, dpi=120, echo=FALSE}
+
+plot_text_size=16
+
+foresplot_all_final_models_analysis_2b_adj_tempseq <- plot_grid(
+  plot_grid(
+    lm.forest(tempseq.glm.for.plot_analysis_2b %>% 
+                filter(Categories=="Sociodemographic") %>% 
+                mutate(UpperBound =
+                         case_when(
+                           UpperBound <= 3 ~ UpperBound,
+                           UpperBound > 3 ~ 3
+                         )), 
+              title="",
+              colourpal=forestpal,
+              uplim=3),
+    lm.forest(tempseq.glm.for.plot_analysis_2b %>% 
+                filter(Categories=="Trauma") %>% 
+                mutate(UpperBound =
+                         case_when(
+                           UpperBound <= 3 ~ UpperBound,
+                           UpperBound > 3 ~ 3
+                         )), 
+              title="",
+              colourpal=forestpal,
+              uplim=3),
+    lm.forest(tempseq.glm.for.plot_analysis_2b %>% 
+                filter(Categories=="Clinical") %>% 
+                mutate(UpperBound =
+                         case_when(
+                           UpperBound <= 3 ~ UpperBound,
+                           UpperBound > 3 ~ 3
+                         )), 
+              title="",
+              colourpal=forestpal,
+              uplim=3),
+      lm.forest(tempseq.glm.for.plot_analysis_2b %>% 
+                filter(Categories=="Genetic") %>% 
+                mutate(UpperBound =
+                         case_when(
+                           UpperBound <= 3 ~ UpperBound,
+                           UpperBound > 3 ~ 3
+                         )), 
+              title="",
+              colourpal=forestpal,
+              uplim=3) +
+      theme(
+        axis.title.x = element_text(size = plot_text_size),
+        axis.text.x = element_text(size = plot_text_size)),
+    
+    
+    align = "v",
+    nrow = 4,
+    rel_heights = c(7/31, 4/31, 11/31, 9/31), 
+    hjust = c(0,0,0,0),
+    vjust = c(1,0,0,0)
+  ),
+   ggpubr::as_ggplot(cowplot::get_legend(
+     lm.forest(tempseq.glm.for.plot_analysis_2b, title="",colourpal=forestpal) +
+      theme(legend.position = c(0.6,0.5),
+            legend.direction = "horizontal",
+            legend.box = "horizontal",
+            legend.box.just = "centre",
+            legend.title = element_blank(),
+            legend.text = element_text(size = plot_text_size)) +
+      guides(color = guide_legend(order = 1, reverse = T, nrow=2, byrow=T))
+  )),
+  ncol= 1,
+  nrow = 2,
+  rel_heights = c(1, 0.05)
+)
+
+foresplot_all_final_models_analysis_2b_adj_tempseq
+```
+
+
+```{r save final analysis 2b model results forestplot adjusted, echo=FALSE}
+ggsave(paste0("forestplot_combined_final_model_analysis_2b_tempseq", Sys.Date(), ".jpeg"),
+       path = figure_path,
+       plot = foresplot_all_final_models_analysis_2b_adj_tempseq,
+       width = 12,
+       height = 14,
+       dpi = 150,
+       units = "in")
+```
+
+## Table: Unadjusted + final model results
+
+```{r format final GLM output table for analysis 2b, include=FALSE}
+full.glm.all.results_for_table_analysis_2b_tempseq <- tempseq.glm.for.plot_analysis_2b %>% 
+  mutate(
+    RowLabels = fct_recode(
+      .f = RowLabels,
+      "Self-reported anxiety/depressive disorder diagnosis" = "Anxiety/depressive disorder \ndiagnosis",
+      "Other self-reported mental health diagnosis" = "Other mental health \ndiagnosis",
+      "Current depressive symptoms (PHQ9)" = "Current depressive \nsymptoms",
+      "Current anxiety symptoms (GAD7)" = "Current anxiety \nsymptoms"
+      ),
+    "adjusted.p.value" =
+           p.adjust(p.value, method = "fdr"),
+    "sig.thresholds" =
+      case_when(
+        adjusted.p.value <= 0.001 ~ "***",
+        adjusted.p.value <= 0.01 ~ "**",
+        adjusted.p.value <= 0.05 ~ "*",
+        adjusted.p.value > 0.05 ~ ""
+      ),
+    OR_sign = paste0(
+        format(round(estimate,2), nsmall=2, scientific = FALSE),
+        sig.thresholds),
+    CI_nospace = 
+      paste0(
+        "(", 
+        format(round(LowerBound, 2), nsmall=2, scientific = FALSE),
+        ",",
+        format(round(UpperBound, 2), nsmall=2, scientific = FALSE),
+        ")"
+      ),
+    Value = 
+      paste(OR_sign, CI_nospace, sep = " "),
+    across(where(is.character), str_replace, pattern = ",", replacement = ", ")
+  ) %>% 
+  select(Variable = RowLabels,
+         Group,
+         Value) %>% 
+  pivot_wider(names_from = Group,
+              values_from = Value)
+
+full.glm.all.results_for_table_analysis_2b_tempseq
+```
+
+```{r format unadjusted GLM tempseq tables for analysis 2b, include=FALSE}
+tempseq_unadjusted_analysis_2b <- rbind(tempseq_sociodemographic_reg_stats,
+                            tempseq_trauma_reg_stats,
+                            tempseq_clinical_reg_stats,
+                            tempseq_genetic_reg_stats) %>%
+  mutate(
+    "sig.thresholds" =
+      case_when(
+        as.numeric(`adjusted p value`) <= 0.001 ~ "***",
+        as.numeric(`adjusted p value`) <= 0.01 ~ "**",
+        as.numeric(`adjusted p value`) <= 0.05 ~ "*",
+        as.numeric(`adjusted p value`) > 0.05 ~ ""
+      ),
+    Value = 
+      paste0(
+        format(OR, nsmall=2),
+        sig.thresholds,
+        " (", 
+        `95% CI`,
+        ")"
+      )
+  ) %>% 
+  select(
+    "Variable" = "Independent variable",
+    "Anxiety-first (vs MDD-first) unadjusted models OR (95% CI)" = "Value"
+  ) %>% 
+  filter(
+    Variable != "Intercept"
+  )
+
+tempseq_unadjusted_analysis_2b
+```
+
+```{r merge unadjusted and final GLM output for analysis 2b, echo=FALSE}
+glm.all.results_analysis_2b_tempseq <- list(tempseq_unadjusted_analysis_2b,
+                                             full.glm.all.results_for_table_analysis_2b_tempseq) %>%
+  reduce(left_join, by = c("Variable")) %>% 
+  rename(
+    "Anxiety-first (vs MDD-first) full model OR (95% CI)" = "anxiety-first (vs MDD-first)"
+  ) %>% 
+  mutate("Variable" = fct_relevel(
+    .f = Variable,
+    Variable_ordered_results
+    )
+  ) %>% 
+  arrange(Variable)
+
+#glm.all.results_analysis_2b_tempseq
+kable(glm.all.results_analysis_2b_tempseq)
+```
+
+### Without AOO
+
+```{r run analysis 2b model without AOO, echo=FALSE}
+all.tempseq.glm_analysis_2b_noAOO <-  model.glm.form_analysis_2b("temporal_sequence_binomial_numeric",
+                                                               variables = all_explanatory_variables_analysis_2b[!all_explanatory_variables_analysis_2b %in% "min_age_of_onset_adjusted"],
+                                                               "dat_tempseq")
+```
+
+```{r generate analysis 2b dataset without AOO, echo=FALSE}
+# Results grouped by dependent variable
+glmoutput_format_analysis_2b_noAOO(all.tempseq.glm_analysis_2b_noAOO,"anxiety-first (vs MDD-first)", "tempseq.glm.for.plot_analysis_2b_noAOO")
+
+```
+
+```{r format final GLM output table for analysis 2b without AOO, include=FALSE}
+full.glm.all.results_for_table_analysis_2b_tempseq_noAOO <- tempseq.glm.for.plot_analysis_2b_noAOO %>% 
+  mutate(
+    RowLabels = fct_recode(
+      .f = RowLabels,
+      "Family history: Anxiety/depressive disorder" = "Family history: \nAnxiety/depressive disorder",
+      "Family history: Other mental health disorder" = "Family history: \nOther mental health disorder",
+      "Self-reported anxiety/depressive disorder diagnosis" = "Anxiety/depressive disorder \ndiagnosis",
+      "Other self-reported mental health diagnosis" = "Other mental health \ndiagnosis",
+      "Current depressive symptoms (PHQ9)" = "Current depressive \nsymptoms",
+      "Current anxiety symptoms (GAD7)" = "Current anxiety \nsymptoms"
+      ),
+    "adjusted.p.value" =
+           p.adjust(p.value, method = "fdr"),
+    "sig.thresholds" =
+      case_when(
+        adjusted.p.value <= 0.001 ~ "***",
+        adjusted.p.value <= 0.01 ~ "**",
+        adjusted.p.value <= 0.05 ~ "*",
+        adjusted.p.value > 0.05 ~ ""
+      ),
+    OR_sign = paste0(
+        format(round(estimate,2), nsmall=2, scientific = FALSE),
+        sig.thresholds),
+    CI_nospace = 
+      paste0(
+        "(", 
+        format(round(LowerBound, 2), nsmall=2, scientific = FALSE),
+        ",",
+        format(round(UpperBound, 2), nsmall=2, scientific = FALSE),
+        ")"
+      ),
+    Value = 
+      paste(OR_sign, CI_nospace, sep = " "),
+    across(where(is.character), str_replace, pattern = ",", replacement = ", ")
+  ) %>% 
+  select(Variable = RowLabels,
+         Group,
+         Value) %>% 
+  pivot_wider(names_from = Group,
+              values_from = Value)
+
+full.glm.all.results_for_table_analysis_2b_tempseq_noAOO
+```
+
+```{r format unadjusted GLM tempseq tables without AOO for analysis 2b, include=FALSE}
+tempseq_unadjusted_analysis_2b_noAOO <- rbind(tempseq_sociodemographic_reg_stats,
+                            tempseq_trauma_reg_stats,
+                            tempseq_clinical_reg_stats_noAOO,
+                            tempseq_genetic_reg_stats) %>%
+  mutate(
+    "sig.thresholds" =
+      case_when(
+        as.numeric(`adjusted p value`) <= 0.001 ~ "***",
+        as.numeric(`adjusted p value`) <= 0.01 ~ "**",
+        as.numeric(`adjusted p value`) <= 0.05 ~ "*",
+        as.numeric(`adjusted p value`) > 0.05 ~ ""
+      ),
+    Value = 
+      paste0(
+        format(OR, nsmall=2),
+        sig.thresholds,
+        " (", 
+        `95% CI`,
+        ")"
+      )
+  ) %>% 
+  select(
+    "Variable" = "Independent variable",
+    "Anxiety-first (vs MDD-first) unadjusted models OR (95% CI)" = "Value"
+  ) %>% 
+  filter(
+    Variable != "Intercept"
+  )
+
+tempseq_unadjusted_analysis_2b_noAOO
+```
+
+### Unadjusted and full model results
+
+```{r merge unadjusted and all factors GLM output table for analysis 2b without AOO, echo=FALSE}
+glm.unadjusted.table.all_analysis_2b_tempseq_noAOO <- list(tempseq_unadjusted_analysis_2b_noAOO,
+                                             full.glm.all.results_for_table_analysis_2b_tempseq_noAOO) %>%
+  reduce(left_join, by = c("Variable")) %>% 
+  rename(
+    "Anxiety-first (vs MDD-first) full model OR (95% CI)" = "anxiety-first (vs MDD-first)"
+  ) %>% 
+  mutate("Variable" = fct_relevel(
+    .f = Variable,
+    Variable_ordered_results
+    )
+  ) %>% 
+  arrange(Variable)
+
+#glm.unadjusted.table.all_analysis_2b_tempseq_noAOO
+kable(glm.unadjusted.table.all_analysis_2b_tempseq_noAOO)
+```
+
+
+### Without AOO and GAD7
+
+```{r run analysis 2b model without AOO and GAD7, echo=FALSE}
+all.tempseq.glm_analysis_2b_noAOO_noGAD7 <-  model.glm.form_analysis_2b("temporal_sequence_binomial_numeric",
+                                                               variables = all_explanatory_variables_analysis_2b[!all_explanatory_variables_analysis_2b %in% c("min_age_of_onset_adjusted", "gad7.sum_score")],
+                                                               "dat_tempseq")
+```
+
+```{r generate analysis 2b dataset without AOO and GAD7, echo=FALSE}
+# Results grouped by dependent variable
+glmoutput_format_analysis_2b_noAOO_noGAD7(all.tempseq.glm_analysis_2b_noAOO_noGAD7,"anxiety-first (vs MDD-first)", "tempseq.glm.for.plot_analysis_2b_noAOO_noGAD7")
+
+```
+
+```{r format final GLM output table for analysis 2b, include=FALSE}
+full.glm.all.results_for_table_analysis_2b_tempseq_noAOO_noGAD7 <- tempseq.glm.for.plot_analysis_2b_noAOO_noGAD7 %>% 
+  mutate(
+    RowLabels = fct_recode(
+      .f = RowLabels,
+      "Family history: Anxiety/depressive disorder" = "Family history: \nAnxiety/depressive disorder",
+      "Family history: Other mental health disorder" = "Family history: \nOther mental health disorder",
+      "Self-reported anxiety/depressive disorder diagnosis" = "Anxiety/depressive disorder \ndiagnosis",
+      "Other self-reported mental health diagnosis" = "Other mental health \ndiagnosis",
+      "Current depressive symptoms (PHQ9)" = "Current depressive \nsymptoms",
+      "Current anxiety symptoms (GAD7)" = "Current anxiety \nsymptoms"
+      ),
+    "adjusted.p.value" =
+           p.adjust(p.value, method = "fdr"),
+    "sig.thresholds" =
+      case_when(
+        adjusted.p.value <= 0.001 ~ "***",
+        adjusted.p.value <= 0.01 ~ "**",
+        adjusted.p.value <= 0.05 ~ "*",
+        adjusted.p.value > 0.05 ~ ""
+      ),
+    OR_sign = paste0(
+        format(round(estimate,2), nsmall=2, scientific = FALSE),
+        sig.thresholds),
+    CI_nospace = 
+      paste0(
+        "(", 
+        format(round(LowerBound, 2), nsmall=2, scientific = FALSE),
+        ",",
+        format(round(UpperBound, 2), nsmall=2, scientific = FALSE),
+        ")"
+      ),
+    across(where(is.character), str_remove_all, pattern = fixed(" ")),
+    Value = 
+      paste(OR_sign, CI_nospace, sep = " "),
+    across(where(is.character), str_replace, pattern = ",", replacement = ", ")
+  ) %>% 
+  select(Variable = RowLabels,
+         Group,
+         Value) %>% 
+  pivot_wider(names_from = Group,
+              values_from = Value)
+
+full.glm.all.results_for_table_analysis_2b_tempseq_noAOO_noGAD7
+```
+
+```{r format unadjusted GLM tempseq tables without AOO and GAD7 for analysis 2b, include=FALSE}
+tempseq_unadjusted_analysis_2b_noAOO_noGAD7 <- rbind(tempseq_sociodemographic_reg_stats,
+                            tempseq_trauma_reg_stats,
+                            tempseq_clinical_reg_stats_noAOO_noGAD7,
+                            tempseq_genetic_reg_stats) %>%
+  mutate(
+    "sig.thresholds" =
+      case_when(
+        as.numeric(`adjusted p value`) <= 0.001 ~ "***",
+        as.numeric(`adjusted p value`) <= 0.01 ~ "**",
+        as.numeric(`adjusted p value`) <= 0.05 ~ "*",
+        as.numeric(`adjusted p value`) > 0.05 ~ ""
+      ),
+    OR_sign = paste0(
+        format(OR, nsmall=2, scientific = FALSE),
+        sig.thresholds),
+    CI_nospace = 
+      paste0(
+        "(", 
+        format(`95% CI`, nsmall=2, scientific = FALSE),
+        ")"
+      ),
+    across(where(is.character), str_remove_all, pattern = fixed(" ")),
+    Value = 
+      paste(OR_sign, CI_nospace, sep = " "),
+    across(where(is.character), str_replace, pattern = ",", replacement = ", ")
+  ) %>% 
+  select(
+    "Variable" = "Independent variable",
+    "Anxiety-first (vs MDD-first) unadjusted models OR (95% CI)" = "Value"
+  ) %>% 
+  filter(
+    Variable != "Intercept"
+  )
+
+tempseq_unadjusted_analysis_2b_noAOO_noGAD7
+```
+
+### Unadjusted and full model results
+
+```{r merge unadjusted and all factors GLM output table for analysis 2b, echo=FALSE}
+glm.unadjusted.table.all_analysis_2b_tempseq_noAOO_noGAD7 <- list(tempseq_unadjusted_analysis_2b_noAOO_noGAD7,
+                                             full.glm.all.results_for_table_analysis_2b_tempseq_noAOO_noGAD7) %>%
+  reduce(left_join, by = c("Variable")) %>% 
+  rename(
+    "Anxiety-first (vs MDD-first) full model OR (95% CI)" = "anxiety-first(vsMDD-first)"
+  ) %>% 
+  mutate("Variable" = fct_relevel(
+    .f = Variable,
+    Variable_ordered_results
+    )
+  ) %>% 
+  arrange(Variable)
+
+#glm.unadjusted.table.all_analysis_2b_tempseq_noAOO_noGAD7
+kable(glm.unadjusted.table.all_analysis_2b_tempseq_noAOO_noGAD7)
+```
+
+  
+# Combined table with Model Ns for *all* analyses
+
+```{r create empty model Ns dataframe, include=FALSE}
+model_Ns_labels_all_analyses <- c("Sociodemographic", 
+                                  "Trauma",  
+                                  "Clinical", 
+                                  "Family history",
+                                  "Genetic", 
+                                  "Full (Main analysis)", 
+                                  "Full (Analysis 2a)", 
+                                  "Full (Analysis 2b)")
+model_Ns_dataframe_all_analyses <- setNames(data.frame(matrix(ncol = 3, nrow = 8)), c("Outcome", 
+                                                                                      "Model",
+                                                                                      "N included"
+                                                                                      ))
+```
+
+*tempseq Model Ns*  
+Number of participants included in each model
+```{r tempseq model Ns for all analyses, echo=FALSE}
+#Dataframe with all values
+tempseq_all_models_included_all_analyses <- c(tempseq_sociodemographic_N, 
+                                               tempseq_trauma_N, 
+                                               tempseq_clinical_N,
+                                               tempseq_family_history_N,
+                                               tempseq_genetic_N,
+                                               tempseq_full_main_analysis_N, 
+                                               tempseq_full_analysis_2a_N,
+                                               tempseq_full_analysis_2b_N
+                                               )
+
+tempseq_model_Ns_all_analyses <- model_Ns_dataframe_all_analyses %>% 
+  mutate(
+    Outcome = "anxiety-first (vs MDD-first)",
+    Model = model_Ns_labels_all_analyses,
+    `N included` = tempseq_all_models_included_all_analyses
+  )  %>% 
+  pivot_wider(names_from = "Model",
+              values_from = "N included")
+kable(tempseq_model_Ns_all_analyses)
+```
+
+
+*Participant numbers (N) table for all outcomes/models*
+```{r Ns table for all analyses, echo=FALSE}
+# Ns_all_analyses <- rbind(
+#   tempseq_model_Ns_all_analyses,
+#   outcome2_model_Ns_all_analyses,
+#   outcome3_model_Ns_all_analyses,
+#   outcome4_model_Ns_all_analyses
+#   ) %>% 
+#   pivot_wider(
+#     names_from = Model,
+#     values_from = `N included`
+#   )
+# 
+# kable(Ns_all_analyses)
+```

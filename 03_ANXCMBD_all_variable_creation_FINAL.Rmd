@@ -1,0 +1,1347 @@
+---
+title: "ANXCMBD_variable_creation"
+author: "Molly R. Davies"
+date: "23/02/2022"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+This recodes/creates new variables utilised in analyses for the paper titled "Factors associated with anxiety disorder comorbidity" (Davies et al., 2022) https://doi.org/10.1016/j.jad.2022.11.051. 
+The paper has been pre-registered at: https://osf.io/ksrf2
+
+Script written by M. R. Davies.
+Email:  molly.davies@kcl.ac.uk
+
+All scripts for the paper can be accessed at:
+https://github.com/mollyrdavies/ANXCMBD-GLAD-COPING
+
+...
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Set up
+
+Clear workspace
+```{r clear workspace}
+rm(list = ls())
+```
+
+```{r create GLAD color palette}
+# GLAD color palette:
+
+GLADpalette = c("#efc00b",   # Yellow
+                "#b7dee8",   # Light blue (logo)
+                "#009fb7",   # Turquoise (dropdown menu)
+                "#215968")   # Dark blue (website text)
+```
+
+```{r install packages}
+#install.packages("tidyverse")
+#install.packages("summarytools")
+```
+
+```{r import packages}
+library(summarytools)
+library(tidyverse)
+```
+
+# Get data
+
+```{r source file paths}
+source("../../ANXCMBD_data_path.R")
+```
+
+Add the add_numeric function - used to convert character variables into numeric variables.
+```{r Read in functions}
+source(file = paste0(ilovedata_file_path, "functions/add_numeric.R"))
+source(file = paste0(ilovedata_file_path, "functions/sumscores.R"))
+```
+
+```{r read data}
+dat <- read_rds(paste0(cleaned_path, "anxcmbd_uncleaned_fixed.rds"))
+```
+
+# Recode as NA
+Recode all -66, -77, -88, and -99 as NA.
+Do the same for the factor variables.
+```{r recode as NA}
+dat <- dat %>% 
+  mutate_if(is.numeric, ~na_if(., -88)) %>% # Recode missing values to NAs in numeric variables
+  mutate_if(is.numeric, ~na_if(., -99)) %>%
+  mutate_if(is.numeric, ~na_if(., -77)) %>%
+  mutate_if(is.numeric, ~na_if(., -888)) %>%
+  mutate_if(is.numeric, ~na_if(., -999)) %>%
+  mutate_if(is.numeric, ~na_if(., -777)) %>%
+  mutate_if(is.numeric, ~na_if(., -66)) %>%
+  mutate_if(is.numeric, ~na_if(., -666)) %>%
+  mutate_if(is.factor, ~na_if(., "Seen but not answered")) %>% # Recode missing values to NAs in factor variables
+  mutate_if(is.factor, ~na_if(., "Don't know")) %>%
+  mutate_if(is.factor, ~na_if(., "Prefer not to say")) %>%
+  mutate_if(is.factor, ~na_if(., "Prefer not to answer")) %>%
+  mutate_if(is.factor, ~forcats::fct_drop(., only = "Seen but not answered")) %>% # Drop empty factor levels
+  mutate_if(is.factor, ~forcats::fct_drop(., only = "Don't know")) %>%
+  mutate_if(is.factor, ~forcats::fct_drop(., only = "Prefer not to answer")) %>%
+  mutate_if(is.factor, ~forcats::fct_drop(., only = "Prefer not to say"))
+```
+
+```{r sample factor}
+dat <- dat %>% 
+  mutate(sample_factor = 
+           fct_relevel(
+             .f = sample,
+             "GLAD",
+             "NBR"
+             )
+           )
+```
+
+
+# Demographic variables
+
+The minority ethnic groups are too small and are either throwing errors (Arab) in the model or have extremely large confidence intervals (for OR, the CI for Asian/Asian British was 0.27261395-67.9991507...). Combining the category with 'other'.
+```{r ethnicity collapsed}
+dat <- dat %>% 
+  mutate(dem.ethnicity_collapsed_unordered = 
+           recode_factor(
+             dem.ethnicity,
+             "White" = "White",
+             "Mixed" = "Minoritised ethnic group",
+             "Asian or Asian British" = "Minoritised ethnic group",
+             "Black or Black British" = "Minoritised ethnic group",
+             "Arab" = "Minoritised ethnic group",
+             "Other" = "Minoritised ethnic group"
+           )
+         )
+  
+```
+
+
+# Vulnerability variables
+
+## MHFH (family history of mental health disorders)
+Create variables to mark presence/absence of family history of disorders and sum scores of N family members with disorders.
+
+Check NA's in family history variables
+```{r MHFH check NAs}
+dat %>% 
+  select(starts_with("mhfh")) %>% 
+  is.na() %>% 
+  colSums()
+```
+
+
+Anxiety/depressive disorder
+```{r create binary anxiety/depressive family history variable}
+dat <- dat %>% 
+  mutate(
+    mhfh.anxiety_or_depression_numeric =
+      case_when(
+        mhfh.depression_numeric == 1 | 
+          mhfh.postnatal_depression_numeric == 1 | 
+          mhfh.mania_hypomania_bipolar_or_manicdepression_numeric == 1 |
+          mhfh.anxiety_nerves_or_generalised_anxiety_disorder_numeric == 1 |
+          mhfh.social_anxiety_or_social_phobia_numeric == 1 |
+          mhfh.specific_phobia_numeric == 1 |
+          mhfh.agoraphobia_numeric == 1 |
+          mhfh.pmdd_numeric == 1 | 
+          mhfh.panic_disorder_numeric == 1 ~ 1,
+        mhfh.none_of_the_above_numeric == 1 ~ 0,
+        mhfh.depression_numeric == 0 & 
+          mhfh.postnatal_depression_numeric == 0 &
+          mhfh.mania_hypomania_bipolar_or_manicdepression_numeric == 0 &
+          mhfh.anxiety_nerves_or_generalised_anxiety_disorder_numeric == 0 &
+          mhfh.social_anxiety_or_social_phobia_numeric == 0 &
+          mhfh.specific_phobia_numeric == 0 &
+          mhfh.agoraphobia_numeric == 0 &
+          (mhfh.pmdd_numeric == 0 | is.na(mhfh.pmdd_numeric)) & #not included in GLAD opt - add NA
+          (mhfh.panic_disorder_numeric == 0 | is.na(mhfh.panic_disorder_numeric)) ~ 0
+      ),
+     mhfh.anxiety_or_depression = recode_factor(
+      mhfh.anxiety_or_depression_numeric,
+      "1" = "Positive family history",
+      "0" = "No family history"
+    )
+  )
+
+ dat %>% 
+   group_by(sample) %>% 
+   summarytools::freq(mhfh.anxiety_or_depression_numeric)
+```
+
+Any other MH disorders (aside from anx/dep)
+```{r create binary other disorders family history variable}
+dat <- dat %>% 
+  mutate(
+    mhfh.other_disorders_numeric =
+      case_when(
+        mhfh.ptsd_numeric ==1 |
+          mhfh.obsessivecompulsive_disorder_ocd_numeric == 1 | 
+          mhfh.bdd_numeric == 1 |
+          mhfh.other_ocd_numeric == 1 |
+          mhfh.schizophrenia_numeric == 1 | 
+          mhfh.psychosis_type_psychotic_illness_numeric == 1 |
+          mhfh.personality_disorder_numeric == 1 |
+          mhfh.autism_spectrum_disorder_asd_numeric == 1 |
+          mhfh.attention_deficit_hyperactivity_disorder_numeric == 1 |
+          mhfh.other_numeric == 1 |
+          mhfh.anorexia_nervosa_numeric == 1 |
+          mhfh.atypical_anorexia_nervosa_numeric == 1 |
+          mhfh.bulimia_nervosa_numeric == 1 |
+          mhfh.bingeeating_disorder_numeric == 1 |
+          mhfh.atypical_bulimia_nervosa_numeric == 1 |
+          mhfh.atypical_bingeeating_disorder_numeric == 1 |
+          mhfh.purging_disorder_numeric == 1 |
+          mhfh.night_eating_syndrome_numeric == 1 |
+          mhfh.pica_numeric == 1 |
+          mhfh.avoidantrestrictive_food_intake_disorder_numeric == 1|
+          mhfh.rumination_disorder_numeric == 1 |
+          mhfh.osfed_or_ednos_numeric == 1 |
+          mhfh.other_eating_disorder_numeric == 1 ~ 1,
+        mhfh.ptsd_numeric == 0 &
+          mhfh.obsessivecompulsive_disorder_ocd_numeric == 0 & 
+          mhfh.bdd_numeric == 0 &
+          mhfh.other_ocd_numeric == 0 &
+          mhfh.schizophrenia_numeric == 0 & 
+          mhfh.psychosis_type_psychotic_illness_numeric == 0 &
+          mhfh.personality_disorder_numeric == 0 &
+          mhfh.autism_spectrum_disorder_asd_numeric == 0 &
+          mhfh.attention_deficit_hyperactivity_disorder_numeric == 0 &
+          mhfh.other_numeric == 0 &
+          mhfh.anorexia_nervosa_numeric == 0 &
+          mhfh.atypical_anorexia_nervosa_numeric == 0 &
+          mhfh.bulimia_nervosa_numeric == 0 &
+          mhfh.bingeeating_disorder_numeric == 0 &
+          (mhfh.atypical_bulimia_nervosa_numeric == 0 | is.na(mhfh.atypical_bulimia_nervosa_numeric)) & #not included in GLAD opt - add NA option (all below)
+          (mhfh.atypical_bingeeating_disorder_numeric == 0 | is.na(mhfh.atypical_bingeeating_disorder_numeric)) &
+          (mhfh.purging_disorder_numeric == 0 | is.na(mhfh.purging_disorder_numeric)) &
+          (mhfh.night_eating_syndrome_numeric == 0 | is.na(mhfh.night_eating_syndrome_numeric)) &
+          (mhfh.pica_numeric == 0 | is.na(mhfh.pica_numeric)) &
+          (mhfh.avoidantrestrictive_food_intake_disorder_numeric == 0 | is.na(mhfh.avoidantrestrictive_food_intake_disorder_numeric)) &
+          (mhfh.rumination_disorder_numeric == 0 | is.na(mhfh.rumination_disorder_numeric)) &
+          (mhfh.osfed_or_ednos_numeric == 0 | is.na(mhfh.osfed_or_ednos_numeric)) &
+          (mhfh.other_eating_disorder_numeric == 0 | is.na(mhfh.other_eating_disorder_numeric)) ~ 0
+        ),
+    mhfh.other_disorders = recode_factor(
+      mhfh.other_disorders_numeric,
+      "1" = "Positive family history",
+      "0" = "No family history"
+    )
+  )
+
+ dat %>% 
+   group_by(sample) %>% 
+   summarytools::freq(mhfh.other_disorders_numeric)
+```
+
+## ATS (adult trauma)
+
+### Total partner abuse
+Count types of partner abuse
+```{r partner abuse sumscores inputs}
+keys_partner_abuse <- c(
+  1,
+  1,
+  1
+  )
+sum_vars_partner_abuse <- c(
+  "ats.partner_violence_freq_binary_numeric",
+  "ats.partner_belittle_freq_binary_numeric",
+  "ats.partner_sexually_interfered_freq_binary_numeric"
+  )
+```
+
+Generate sumscores from questionnaire data and add to dat as new column
+```{r generate partner abuse sumscores}
+dat <- dat %>% 
+  mutate(
+    ats.partner_abuse_count = 
+         sumscores(input = dat,
+                   sum_vars = sum_vars_partner_abuse,
+                   coding_keys = keys_partner_abuse,
+                   na_allowed = 0,
+                   min_item = 0,
+                   max_item = 1,
+                   min_score = 0,
+                   max_score = 3
+                   )$scores
+         )
+
+dat %>%
+  select(ats.partner_abuse_count) %>%
+  summarytools::freq()
+```
+
+### Any partner abuse (binary)
+```{r any partner abuse binary numeric}
+dat <- dat %>% 
+  mutate(
+    ats.partner_abuse_binary_numeric =
+      case_when(
+        ats.partner_abuse_count >= 1 ~ 1,
+        ats.partner_abuse_count < 1 ~ 0
+        )
+    )
+```
+
+Recode numeric any partner abuse variable to binary
+```{r any partner abuse binary numeric}
+dat <- dat %>%
+  mutate(ats.partner_abuse_binary =
+           recode_factor(ats.partner_abuse_binary_numeric,
+                         "0" = "No partner abuse",
+                         "1" = "Partner abuse"
+                         )
+  )
+dat %>%
+  summarytools::freq(ats.partner_abuse_binary)
+```
+
+### Total adult trauma
+Count types of adult trauma
+```{r adult trauma sumscores inputs}
+keys_adult_trauma <- c(
+  1,
+  1,
+  1,
+  1,
+  1
+  )
+sum_vars_adult_trauma <- c(
+    "ats.confiding_relationship_freq_binary_numeric",
+    "ats.partner_violence_freq_binary_numeric",
+    "ats.partner_belittle_freq_binary_numeric",
+    "ats.partner_sexually_interfered_freq_binary_numeric",
+    "ats.pay_rent_mortgage_freq_binary_numeric"
+  )
+```
+
+Generate sumscores from questionnaire data and add to dat as new column
+```{r generate adult trauma sumscores}
+dat <- dat %>% 
+  mutate(
+    ats.adult_trauma_count = 
+         sumscores(input = dat,
+                   sum_vars = sum_vars_adult_trauma,
+                   coding_keys = keys_adult_trauma,
+                   na_allowed = 0,
+                   min_item = 0,
+                   max_item = 1,
+                   min_score = 0,
+                   max_score = 5
+                   )$scores
+         )
+
+dat %>%
+  select(ats.adult_trauma_count) %>%
+  summarytools::freq()
+```
+
+### Any adult trauma
+```{r any adult trauma binary numeric}
+dat <- dat %>% 
+  mutate(
+    ats.adult_trauma_binary_numeric =
+      case_when(
+        ats.adult_trauma_count >= 1 ~ 1,
+        ats.adult_trauma_count < 1 ~ 0
+        )
+    )
+```
+
+Recode numeric any childhood maltreatment variable to binary
+```{r any maltreatment binary numeric}
+dat <- dat %>%
+  mutate(ats.adult_trauma_binary =
+           recode_factor(ats.adult_trauma_binary_numeric,
+                         "0" = "No adult trauma",
+                         "1" = "Adult trauma"
+                         )
+  )
+dat %>%
+  summarytools::freq(ats.adult_trauma_binary)
+```
+
+### Total catastrophic trauma
+Count types of catastrophic trauma
+```{r sumscores inputs}
+keys_cat_trauma <- c(
+  1,
+  1,
+  1,
+  1,
+  1,
+  1
+  )
+sum_vars_cat_trauma <- c(
+    "ats.sexual_assault_binary_numeric", 
+    "ats.violent_crime_binary_numeric", 
+    "ats.serious_accident_binary_numeric", 
+    "ats.witnessed_death_binary_numeric", 
+    "ats.lifethreatening_illness_binary_numeric", 
+    "ats.combat_war_binary_numeric"
+  )
+```
+
+Generate sumscores from questionnaire data and add to dat as new column
+```{r generate sumscores}
+dat <- dat %>% 
+  mutate(
+    ats.catastrophic_trauma_count = 
+         sumscores(input = dat,
+                   sum_vars = sum_vars_cat_trauma,
+                   coding_keys = keys_cat_trauma,
+                   na_allowed = 0,
+                   min_item = 0,
+                   max_item = 1,
+                   min_score = 0,
+                   max_score = 6
+                   )$scores
+         )
+
+dat %>%
+  select(ats.catastrophic_trauma_count) %>%
+  summarytools::freq()
+```
+
+## Any catastrophic trauma
+```{r any maltreatment binary numeric}
+dat <- dat %>% 
+  mutate(
+    ats.catastrophic_trauma_binary_numeric =
+      case_when(
+        ats.catastrophic_trauma_count >= 1 ~ 1,
+        ats.catastrophic_trauma_count < 1 ~ 0
+        )
+    )
+```
+
+Recode numeric any childhood maltreatment variable to binary
+```{r any maltreatment binary numeric}
+dat <- dat %>%
+  mutate(ats.catastrophic_trauma_binary =
+           recode_factor(ats.catastrophic_trauma_binary_numeric,
+                         "0" = "No catastrophic trauma",
+                         "1" = "Catastrophic trauma"
+                         )
+  )
+dat %>%
+  summarytools::freq(ats.catastrophic_trauma_binary)
+```
+
+## CTS (child trauma)
+Total childhood maltreatment
+
+### Total childhood maltreatment
+Count types of maltreatment reported
+```{r sumscores inputs}
+keys <- c(
+  1,
+  1,
+  1,
+  1,
+  1
+  )
+sum_vars <- c(
+  "cts.sexual_abuse_binary_numeric",
+  "cts.emotional_abuse_binary_numeric",
+  "cts.physical_abuse_binary_numeric",
+  "cts.emotional_neglect_binary_numeric",
+  "cts.physical_neglect_binary_numeric"
+  )
+```
+
+Generate sumscores from questionnaire data and add to dat as new column
+```{r generate sumscores}
+dat <- dat %>% 
+  mutate(
+    cts.maltreatment_count = 
+         sumscores(input = dat,
+                   sum_vars = sum_vars,
+                   coding_keys = keys,
+                   na_allowed = 0,
+                   min_item = 0,
+                   max_item = 1,
+                   min_score = 0,
+                   max_score = 5
+                   )$scores
+         )
+
+dat %>%
+  select(cts.maltreatment_count) %>%
+  summarytools::freq()
+```
+
+### Any childhood maltreatment
+```{r any maltreatment binary numeric}
+dat <- dat %>% 
+  mutate(
+    cts.any_maltreatment_binary_numeric =
+      case_when(
+        cts.maltreatment_count >= 1 ~ 1,
+        cts.maltreatment_count < 1 ~ 0
+        )
+    )
+```
+
+Recode numeric any childhood maltreatment variable to binary
+```{r any maltreatment binary numeric}
+dat <- dat %>%
+  mutate(cts.any_maltreatment_binary =
+           recode_factor(cts.any_maltreatment_binary_numeric,
+                         "0" = "No childhood maltreatment",
+                         "1" = "Childhood maltreatment"
+                         )
+  )
+dat %>%
+  summarytools::freq(cts.any_maltreatment_binary)
+```
+
+# Clinical variables
+
+## MHD (self-reported mental health diagnoses)
+Create: 
+ 1) any anxiety/depression self-reported diagnostic status and
+ 2) any other self-reported diagnosis
+
+```{r MHD check NAs}
+dat %>% 
+  select(mhd.ptsd_numeric, 
+         mhd.ocd_numeric, 
+         mhd.bdd_numeric, 
+         mhd.bipolar_disorder_numeric,
+         mhd.other_ocd_numeric,
+         mhd.eating_disorders_numeric,
+         mhd.schizophrenia_numeric,
+         mhd.psychosis_numeric,
+         mhd.personality_disorder_numeric,
+         mhd.asd_numeric,
+         mhd.addadhd_numeric,
+         mhd.other_numeric,
+         mhd.mdd_numeric,
+         mhd.perinatal_depression_numeric,
+         mhd.pmdd_numeric,
+         mhd.gad_numeric,
+         mhd.specific_phobia_numeric,
+         mhd.social_anxiety_numeric,
+         mhd.bipolar_disorder_numeric,
+         mhd.panic_disorder_numeric,
+         mhd.agoraphobia_numeric) %>% 
+  is.na() %>% 
+  colSums()
+```
+*Panic disorder, perinatal depression, and PMDD were added later in data collection. Perinatal depression and PMDD were furthermore only displayed to female participants. This has been accounted for in the variable creation chunk below.*
+
+```{r MHD combined anxiety/depression and other diagnoses variables}
+dat <- dat %>% 
+  mutate(
+    mhd.anxiety_depression_numeric = 
+           case_when(mhd.mdd_numeric == 1 | 
+                       mhd.perinatal_depression_numeric == 1 |
+                       mhd.pmdd_numeric == 1 | 
+                       mhd.gad_numeric == 1 |
+                       mhd.specific_phobia_numeric == 1 | 
+                       mhd.social_anxiety_numeric == 1 |
+                       mhd.panic_disorder_numeric == 1 | 
+                       mhd.agoraphobia_numeric == 1 ~ 1,
+                     mhd.mdd_numeric == 0 & 
+                       mhd.gad_numeric == 0 &
+                       mhd.specific_phobia_numeric == 0 & 
+                       mhd.social_anxiety_numeric == 0 &
+                       mhd.bipolar_disorder_numeric == 0 &
+                       (mhd.panic_disorder_numeric == 0 | is.na(mhd.panic_disorder_numeric)) & 
+                       mhd.agoraphobia_numeric == 0 &
+                       (mhd.perinatal_depression_numeric == 0 | is.na(mhd.perinatal_depression_numeric)) &
+                       (mhd.pmdd_numeric == 0 | is.na(mhd.pmdd_numeric)) ~ 0
+           ),
+    mhd.other_diagnoses_numeric = 
+           case_when(
+             mhd.ptsd_numeric == 1 | 
+               mhd.ocd_numeric == 1 | 
+               mhd.bdd_numeric == 1 |
+               mhd.bipolar_disorder_numeric == 1 |
+               mhd.other_ocd_numeric == 1 | 
+               mhd.eating_disorders_numeric == 1 | 
+               mhd.schizophrenia_numeric == 1 |
+               mhd.psychosis_numeric == 1 | 
+               mhd.personality_disorder_numeric == 1 | 
+               mhd.asd_numeric == 1 | 
+               mhd.addadhd_numeric == 1 | 
+               mhd.other_numeric == 1 ~ 1,
+             mhd.ptsd_numeric == 0 & 
+               mhd.ocd_numeric == 0 & 
+               mhd.bdd_numeric == 0 &
+               mhd.bipolar_disorder_numeric == 0 &
+               mhd.other_ocd_numeric == 0 & 
+               mhd.eating_disorders_numeric == 0 & 
+               mhd.schizophrenia_numeric == 0 &
+               mhd.psychosis_numeric == 0 & 
+               mhd.personality_disorder_numeric == 0 & 
+               mhd.asd_numeric == 0 & 
+               mhd.addadhd_numeric == 0 & 
+               mhd.other_numeric == 0 ~ 0
+           ),
+    mhd.anxiety_depression =
+      recode_factor(mhd.anxiety_depression_numeric,
+                    `0` = "No diagnosis",
+                    `1` = "Diagnosis"),
+    mhd.other_diagnoses =
+      recode_factor(mhd.other_diagnoses_numeric,
+                    `0` = "No diagnosis",
+                    `1` = "Diagnosis"),
+  )
+
+dat %>% 
+  summarytools::freq(mhd.anxiety_depression_numeric)
+
+dat %>% 
+  summarytools::freq(mhd.other_diagnoses_numeric)
+```
+
+## Age of onset
+Create a variable for earliest age of onset.
+
+Clean age of onset variables for each disorder to be younger than age at registration, and (for the purposes of this paper) to only have a value if diagnosis is positive.
+```{r clean AOO variables}
+dat <- dat %>% 
+  mutate(cidid.age_of_onset_cleaned = 
+           case_when(
+             cidid.diagnosis_numeric == 1 & (cidid.age_of_onset <= dem.age) ~ cidid.age_of_onset,
+             cidid.age_of_onset > dem.age ~ NA_real_
+           ),
+         cidia.age_of_onset_cleaned = 
+           case_when(
+             cidia.diagnosis_numeric == 1 & (cidia.age_of_onset <= dem.age) ~ cidia.age_of_onset,
+             cidia.age_of_onset > dem.age ~ NA_real_
+           ),
+         spec.age_of_onset_cleaned = 
+           case_when(
+             spec.diagnosis_numeric == 1 & (spec.age_of_onset <= dem.age) ~ spec.age_of_onset,
+             spec.age_of_onset > dem.age ~ NA_real_
+           ),
+         socp.age_of_onset_cleaned = 
+           case_when(
+             socp.diagnosis_numeric == 1 & (socp.age_of_onset <= dem.age) ~ socp.age_of_onset,
+             socp.age_of_onset > dem.age ~ NA_real_
+           ),
+         pad.age_of_onset_cleaned = 
+           case_when(
+             pad.diagnosis_numeric == 1 & (pad.age_of_onset <= dem.age) ~ pad.age_of_onset,
+             pad.age_of_onset > dem.age ~ NA_real_
+           ),
+         agp.age_of_onset_cleaned = 
+           case_when(
+             agp.diagnosis_numeric == 1 & (agp.age_of_onset <= dem.age) ~ agp.age_of_onset,
+             agp.age_of_onset > dem.age ~ NA_real_
+           )
+  )
+```
+
+Create minimum age of onset variable.
+```{r create min AOO variable}
+dat <- dat %>% 
+  rowwise() %>% 
+  mutate(min_age_of_onset =
+           pmin(cidid.age_of_onset_cleaned, cidia.age_of_onset_cleaned, spec.age_of_onset_cleaned, socp.age_of_onset_cleaned, pad.age_of_onset_cleaned, agp.age_of_onset_cleaned, na.rm=T)
+         )
+summary(dat$min_age_of_onset)
+```
+
+```{r create min anxiety AOO variable}
+dat <- dat %>% 
+  rowwise() %>% 
+  mutate(min_anxiety_age_of_onset =
+           pmin(cidia.age_of_onset_cleaned, spec.age_of_onset_cleaned, socp.age_of_onset_cleaned, pad.age_of_onset_cleaned, agp.age_of_onset_cleaned, na.rm=T)
+         )
+summary(dat$min_anxiety_age_of_onset)
+```
+
+```{r create min distress variable}
+dat <- dat %>% 
+  rowwise() %>% 
+  mutate(min_distress_age_of_onset =
+           pmin(cidid.age_of_onset_cleaned, cidia.age_of_onset_cleaned, na.rm=T)
+         )
+summary(dat$min_distress_age_of_onset)
+```
+
+```{r create min fear variable}
+dat <- dat %>% 
+  rowwise() %>% 
+  mutate(min_fear_age_of_onset =
+           pmin(spec.age_of_onset_cleaned, socp.age_of_onset_cleaned, pad.age_of_onset_cleaned, agp.age_of_onset_cleaned, na.rm=T)
+         )
+summary(dat$min_fear_age_of_onset)
+```
+
+MDD-first or anxiety-first
+```{r create temporal sequence variable}
+dat <- dat %>% 
+  mutate(temporal_sequence_binomial_numeric = 
+           case_when(
+             cidid.age_of_onset_cleaned < min_anxiety_age_of_onset ~ 0,
+             min_anxiety_age_of_onset < cidid.age_of_onset_cleaned ~ 1
+           ),
+         temporal_sequence_binomial = 
+           recode_factor(
+             temporal_sequence_binomial_numeric,
+             "1" = "Anxiety-first",
+             "0" = "MDD-first"
+             ),
+         temporal_sequence_binomial =
+           fct_relevel(
+             .f = temporal_sequence_binomial,
+             "MDD-first",
+             "Anxiety-first"
+           ),
+         temporal_sequence_all_numeric = 
+           case_when(
+             cidid.age_of_onset_cleaned < min_anxiety_age_of_onset ~ 0,
+             min_anxiety_age_of_onset < cidid.age_of_onset_cleaned ~ 1,
+             min_anxiety_age_of_onset == cidid.age_of_onset_cleaned ~ 2
+           ),
+         temporal_sequence_all = 
+           recode_factor(
+             temporal_sequence_all_numeric,
+             "2" = "Anxiety-MDD simultaneous onset",
+             "1" = "Anxiety-first",
+             "0" = "MDD-first"
+             )
+         )
+```
+
+
+## Chronicity
+Subtract age of onset from age of last episode variable to get chronicity for each disorder. 
+
+Clean age of last episode variables for each disorder to be younger than age at registration.
+```{r clean age of last episode variables}
+dat <- dat %>% 
+  mutate(cidid.age_of_last_episode_cleaned = 
+           case_when(
+             cidid.age_of_last_episode <= dem.age & cidid.age_of_last_episode >= cidid.age_of_onset_cleaned ~ cidid.age_of_last_episode,
+             cidid.age_of_last_episode > dem.age | cidid.age_of_last_episode < cidid.age_of_onset_cleaned ~ NA_real_
+           ),
+         cidia.age_of_last_episode_cleaned = 
+           case_when(
+             cidia.age_of_last_episode <= dem.age & cidia.age_of_last_episode >= cidia.age_of_onset_cleaned  ~ cidia.age_of_last_episode,
+             cidia.age_of_last_episode > dem.age ~ NA_real_
+           ),
+         spec.age_of_last_episode_cleaned = 
+           case_when(
+             spec.age_of_last_episode <= dem.age & spec.age_of_last_episode >= spec.age_of_onset_cleaned  ~ spec.age_of_last_episode,
+             spec.age_of_last_episode > dem.age ~ NA_real_
+           ),
+         socp.age_of_last_episode_cleaned = 
+           case_when(
+             socp.age_of_last_episode <= dem.age & socp.age_of_last_episode >= socp.age_of_onset_cleaned ~ socp.age_of_last_episode,
+             socp.age_of_last_episode > dem.age ~ NA_real_
+           ),
+         pad.age_of_last_episode_cleaned = 
+           case_when(
+             pad.age_of_last_episode <= dem.age & pad.age_of_last_episode >= pad.age_of_onset_cleaned ~ pad.age_of_last_episode,
+             pad.age_of_last_episode > dem.age ~ NA_real_
+           ),
+         agp.age_of_last_episode_cleaned = 
+           case_when(
+             agp.age_of_last_episode <= dem.age & agp.age_of_last_episode >= agp.age_of_onset_cleaned ~ agp.age_of_last_episode,
+             agp.age_of_last_episode > dem.age ~ NA_real_
+           )
+         )
+
+```
+
+```{r create chronicity variables for each disorder}
+dat <- dat %>% 
+  mutate(cidid.chronicity = 
+             cidid.age_of_last_episode_cleaned - cidid.age_of_onset_cleaned,
+         cidia.chronicity = 
+             cidia.age_of_last_episode_cleaned - cidia.age_of_onset_cleaned,
+         spec.chronicity = 
+             spec.age_of_last_episode_cleaned - spec.age_of_onset_cleaned,
+         socp.chronicity = 
+             socp.age_of_last_episode_cleaned - socp.age_of_onset_cleaned,
+         pad.chronicity = 
+             pad.age_of_last_episode_cleaned - pad.age_of_onset_cleaned,
+         agp.chronicity = 
+             agp.age_of_last_episode_cleaned - agp.age_of_onset_cleaned
+         )
+summary(dat$cidid.chronicity)
+```
+
+```{r create longest chronicity variable}
+dat <- dat %>% 
+  rowwise() %>% 
+  mutate(max_chronicity =
+           pmax(cidid.chronicity, cidia.chronicity, spec.chronicity, socp.chronicity, pad.chronicity, agp.chronicity, na.rm=T)
+         )
+summary(dat$max_chronicity)
+```
+
+
+## Recurrence
+Create a variable for highest recurrence
+
+```{r create maximum recurrence variable}
+dat <- dat %>% 
+  rowwise() %>% 
+  mutate(max_recurrence =
+           pmax(cidid.number_of_episodes, cidia.number_of_episodes, socp.number_of_episodes, pad.number_of_episodes, agp.number_of_episodes, na.rm=T)
+         ) %>% 
+  ungroup()
+
+summary(dat$max_recurrence) 
+```
+
+## Number of anxiety disorder diagnoses
+Anxiety disorder count variable
+
+```{r create variable of total anxiety diagnoses}
+#Sum all algorithm-based anxiety diagnoses and include NAs (coded as 0)
+dat$anxiety_count_numeric_unc <- rowSums(dat[,c("cidia.diagnosis_numeric",
+                                                  "spec.diagnosis_numeric",
+                                                  "socp.diagnosis_numeric",
+                                                  "pad.diagnosis_numeric",
+                                                  "agp.diagnosis_numeric")], 
+                                                na.rm=TRUE)
+
+#Summarise
+summary(as.factor(dat$anxiety_count_numeric_unc))
+
+```
+
+Anxiety disorder N/A count variable
+```{r NA count in anxiety disorders}
+
+#Do NOT use 'is.na' for these as then you cannot +1 to it. Use the no.info item for NA (below). 
+dat$anxiety_NA_count_numeric<-0
+
+#GAD
+dat$anxiety_NA_count_numeric<-with(dat, 
+                         ifelse(is.na(cidia.diagnosis_numeric),
+                                anxiety_NA_count_numeric + 1, anxiety_NA_count_numeric))
+#Specific phobia
+dat$anxiety_NA_count_numeric<-with(dat, 
+                         ifelse(is.na(spec.diagnosis_numeric),
+                                anxiety_NA_count_numeric + 1, anxiety_NA_count_numeric))
+#Social phobia
+dat$anxiety_NA_count_numeric<-with(dat, 
+                         ifelse(is.na(socp.diagnosis_numeric),
+                                anxiety_NA_count_numeric + 1, anxiety_NA_count_numeric))
+#Panic disorder
+dat$anxiety_NA_count_numeric<-with(dat,
+                        ifelse(is.na(pad.diagnosis_numeric),
+                               anxiety_NA_count_numeric + 1, anxiety_NA_count_numeric))
+#Agoraphobia
+dat$anxiety_NA_count_numeric<-with(dat, 
+                         ifelse(is.na(agp.diagnosis_numeric),
+                                anxiety_NA_count_numeric + 1, anxiety_NA_count_numeric))
+#Check distribution of scores
+summarytools::freq(dat$anxiety_NA_count_numeric)
+
+```
+
+Remove participants with missing data if they have 0 disorders.
+```{r clean anxiety disorder count variable}
+dat <- dat %>% 
+  mutate(anxiety_count_numeric = 
+           case_when(
+             anxiety_count_numeric_unc > 0 ~ anxiety_count_numeric_unc,
+             anxiety_count_numeric_unc == 0 & anxiety_NA_count_numeric > 0 ~ NA_real_,
+             anxiety_count_numeric_unc == 0 & anxiety_NA_count_numeric == 0 ~ anxiety_count_numeric_unc
+           )
+  )
+
+#Compare unclean and cleaned variables
+summarytools::freq(dat$anxiety_count_numeric_unc)
+summarytools::freq(dat$anxiety_count_numeric)
+```
+
+## PHQ9 (current depressive symptoms)
+Sumscore
+
+Reference to scoring guidance here: Kroenke K, Spitzer RL, Williams JB; The PHQ-9: validity of a brief depression severity measure. J Gen Intern Med. 2001 Sep 16(9):606-13.
+```{r PHQ9 sumscore inputs}
+keys_phq9 <- c(
+  1,
+  1,
+  1,
+  1,
+  1,
+  1,
+  1,
+  1,
+  1
+  ) # should be 9 1s (none of the PHQ9 items are reverse coded)
+
+sum_vars_phq9 <- c(
+  "phq9.dead_hurting_thoughts_numeric",
+  "phq9.feeling_bad_failure_family_numeric",
+  "phq9.feeling_down_depressed_or_hopeless_numeric",
+  "phq9.feeling_tired_or_having_little_energy_numeric",
+  "phq9.little_interest_or_pleasure_in_doing_things_numeric",
+  "phq9.moving_fidgety_noticed_opposite_numeric",
+  "phq9.poor_appetite_or_overeating_numeric",
+  "phq9.staying_asleep_sleeping_trouble_numeric",
+  "phq9.trouble_concentrating_reading_newspaper_numeric"
+  )
+```
+
+Generate sumscores from questionnaire data and add to dat as new column
+sumscores assumes that all items in the questionnaire have the SAME minimum and maximum scores for ALL items, ensure that this is correct before proceeding
+
+```{r PHQ9 generate sumscore}
+dat <- dat %>%
+ mutate(
+   phq9.sum_score =
+        sumscores(
+          input = dat,
+          sum_vars = sum_vars_phq9,
+          coding_keys = keys_phq9,
+          min_item = 0,
+          max_item = 3,
+          min_score = 0,
+          max_score = 27
+          )$scores
+   )
+
+# dat$phq9.sum_score <-
+#          sumscores(
+#            input = dat_test,
+#            sum_vars = sum_vars_phq9,
+#            coding_keys = keys_phq9,
+#            na_allowed = 0,
+#            min_item = 0,
+#            max_item = 3,
+#            min_score = 0,
+#            max_score = 27
+#            )
+# check
+
+dat %>% 
+  summarytools::descr(phq9.sum_score)
+
+dat %>% 
+  select(starts_with("phq9")) %>% 
+  select(ends_with("numeric")) %>%
+  colnames()
+```
+
+## GAD7 (current anxiety symptoms)
+Sumscore
+
+Link to reference for scoring guidance for GAD-7 questionnaire - 
+https://jamanetwork.com/journals/jamainternalmedicine/fullarticle/410326 
+
+sum_vars vector should contain all variables needed for scoring
+```{r GAD7 sumscores inputs}
+keys_gad7 <- c(
+  1,
+  1,
+  1,
+  1,
+  1,
+  1,
+  1
+  )
+
+#sum_vars_gad7 <- c(
+#  "gad7.feeling_nervous_anxious_or_on_edge_numeric",
+#  "gad7.control_worrying_stop_numeric",
+#  "gad7.worrying_too_much_about_different_things_numeric",
+#  "gad7.trouble_relaxing_numeric",
+#  "gad7.sit_restless_hard_numeric",
+#  "gad7.becoming_easily_annoyed_or_irritable_numeric",
+#  "gad7.awful_feeling_afraid_happen_numeric"
+#  )
+
+sum_vars_gad7_renamed <- c(
+  "gad7.nervous_anxious_numeric",
+  "gad7.control_worry_numeric",
+  "gad7.worry_too_much_numeric",
+  "gad7.trouble_relaxing_numeric",
+  "gad7.restless_numeric",
+  "gad7.annoyed_irritable_numeric",
+  "gad7.feeling_afraid_numeric"   
+  )
+
+dat %>% 
+  select(starts_with("gad7")) %>% 
+  select(ends_with("numeric")) %>%
+  colnames()
+```
+
+Generate sumscores from questionnaire data and add to dat as new column
+
+sumscores assumes that all items in the questionnaire have the SAME minimum and maximum scores for ALL items, ensure that this is correct before proceeding
+
+```{r GAD7 generate sumscores}
+dat <- dat %>%
+ mutate(
+   gad7.sum_score =
+     sumscores(input = dat,
+                  sum_vars = sum_vars_gad7_renamed,
+                  coding_keys = keys_gad7,
+                  na_allowed=0,
+                  min_item = 0,
+                  max_item = 3,
+                  min_score = 0,
+                  max_score = 21
+                  )$scores
+        )
+# dat$gad7.sum_score <-
+#   sumscores(input = dat,
+#                    sum_vars = sum_vars_gad7_renamed,
+#                    coding_keys = keys_gad7,
+#                    na_allowed = 0, 
+#                    min_item = 0,
+#                    max_item = 3,
+#                    min_score = 0,
+#                    max_score = 21
+#                    )
+
+dat %>%
+  select(gad7.sum_score) %>%
+  summarytools::descr()
+```
+
+*Note GAD-7 scoring criteria:*
+Cut off for mild GAD is 5, moderate is 10 and severe is 15. Clinical cut off is 10.
+Spitzer et al 2006 identified a cut off of 10 had optimized sensitivity (89%) and specificity (82%).
+"A score of 10 or greater on the GAD-7 represents a reasonable cut off point for identifying cases of GAD. Cut off points of 5, 10, and 15 might be interpreted as representing mild, moderate, and severe levels of anxiety on the GAD-7"
+
+References: NHS (https://www.hct.nhs.uk/media/1874/gad7.pdf); Spitzer et al 2006 (https://jamanetwork.com/journals/jamainternalmedicine/fullarticle/410326)
+
+
+
+# Dependent variables
+
+## Anxiety/depression categories
+Variables for the primary aim of the paper: exploring differences between anxiety and depressive disorder comorbidity groupings.
+
+### Preliminary variables
+Variables required to create the binary outcome variables, but not used in isolation.
+
+Any anxiety variable
+```{r create any anxiety variables}
+#Create lifetime any anxiety variable
+dat <- dat %>% 
+  mutate(anxiety_disorder_numeric = 
+           case_when(
+             cidia.diagnosis_numeric == 0 & 
+               spec.diagnosis_numeric == 0 & 
+               socp.diagnosis_numeric == 0 &
+               pad.diagnosis_numeric == 0 &
+               agp.diagnosis_numeric == 0 ~ 0,
+             cidia.diagnosis_numeric == 1 | spec.diagnosis_numeric == 1 |
+               socp.diagnosis_numeric == 1 |
+               pad.diagnosis_numeric == 1 | agp.diagnosis_numeric == 1 ~ 1
+           ))
+
+#Recode as factor
+dat$anxiety_disorder <- recode_factor(dat$anxiety_disorder_numeric,
+                                        "0" = "Never had anxiety",
+                                        "1" = "Lifetime any anxiety")
+
+#Get frequencies
+summarytools::freq(dat$anxiety_disorder)
+```
+
+Any algorithm-based disorder count variable (MDD or anxiety)
+This variable is not used in analyses, but is utilised to assess eligibility for inclusion in this study.
+```{r create variable of N algorithm-based diagnoses}
+#Sum all algorithm-based diagnoses and include NAs (coded as 0)
+dat$algorithm_based_count_numeric <- rowSums(dat[,c("cidid.diagnosis_numeric", 
+                                                          "cidia.diagnosis_numeric", 
+                                                          "spec.diagnosis_numeric", 
+                                                          "socp.diagnosis_numeric", 
+                                                          "pad.diagnosis_numeric", 
+                                                          "agp.diagnosis_numeric")], 
+                                                na.rm=TRUE)
+
+#Check what it would be if the NAs were excluded
+dat$algorithm_based_noNA.n <- rowSums(dat[,c("cidid.diagnosis_numeric", 
+                                                   "cidia.diagnosis_numeric", 
+                                                   "spec.diagnosis_numeric", 
+                                                   "socp.diagnosis_numeric", 
+                                                   "pad.diagnosis_numeric", 
+                                                   "agp.diagnosis_numeric")], 
+                                         na.rm=FALSE)
+
+#Summarise
+summary(as.factor(dat$algorithm_based_count_numeric))
+summary(as.factor(dat$algorithm_based_noNA.n))
+
+```
+
+*Single anxiety*
+One anxiety disorder
+No MDD
+No missingness for any of the disorders
+```{r single anxiety variable}
+dat <- dat %>% 
+  mutate(
+    single_anxiety_numeric =
+      case_when(
+        anxiety_count_numeric == 1 & cidid.diagnosis_numeric == 0 & anxiety_NA_count_numeric > 0 ~ NA_real_,
+        anxiety_count_numeric == 1 & cidid.diagnosis_numeric == 0 ~ 1,
+        anxiety_disorder_numeric == 0 ~ 0,
+        cidid.diagnosis_numeric == 1 ~ 0,
+        anxiety_count_numeric > 1 ~ 0
+      )
+  )
+
+#Summarise
+summary(as.factor(dat$single_anxiety_numeric))
+```
+
+*Anxiety-anxiety*
+At least two anxiety disorders
+No MDD
+No missinginess for MDD
+Coded N/A if anxiety disorder count is 0 but 2+ anxiety disorders are N/A
+Coded N/A if anxiety disorder count is 1 but 1+ anxiety disorders are N/A
+
+```{r anxiety-anxiety variable}
+dat <- dat %>% 
+  mutate(
+    anxiety_anxiety_numeric =
+           case_when(
+             cidid.diagnosis_numeric == 1 ~ 0,
+             anxiety_count_numeric == 1 & cidid.diagnosis_numeric == 0 & anxiety_NA_count_numeric > 0 ~ NA_real_,
+             single_anxiety_numeric == 1 ~ 0,
+             anxiety_count_numeric > 1 & cidid.diagnosis_numeric == 0 ~ 1
+           )
+    )
+
+summarytools::freq(dat$anxiety_anxiety_numeric)
+```
+
+*Single MDD*
+MDD only
+No anxiety disorders
+Coded N/A if 1+ anxiety disorder(s) is N/A
+
+```{r single MDD variable}
+dat <- dat %>% 
+  mutate(
+    single_depression_numeric = 
+      case_when(
+        anxiety_disorder_numeric == 0 & anxiety_NA_count_numeric > 0 ~ NA_real_,
+        cidid.diagnosis_numeric == 1 & anxiety_disorder_numeric == 0 ~ 1,
+        cidid.diagnosis_numeric == 0 ~ 0,
+        anxiety_disorder_numeric == 1 ~ 0
+      )
+  )
+
+summary(as.factor(dat$single_depression_numeric))
+```
+
+*MDD-anxiety*
+MDD
+At least one anxiety disorder
+Coded N/A if MDD is N/A
+Coded N/A if anxiety disorder count is 0 but 1+ anxiety disorder(s) is N/A
+
+```{r MDD-anxiety variable}
+dat <- dat %>% 
+  mutate(
+    anxiety_depression_numeric =
+      case_when(
+        cidid.diagnosis_numeric == 1 & anxiety_disorder_numeric == 1 ~ 1,
+        cidid.diagnosis_numeric == 0 ~ 0,
+        cidid.diagnosis_numeric == 1 & anxiety_disorder_numeric == 0 & anxiety_NA_count_numeric > 0 ~ NA_real_,
+        anxiety_disorder_numeric == 0 ~ 0,
+        cidid.diagnosis_numeric == 1 & anxiety_disorder_numeric == 0 ~ 0
+      )
+  )
+
+summary(as.factor(dat$anxiety_depression_numeric))
+```
+
+```{r all anxiety/depression variables}
+dat <- dat %>% 
+  mutate(
+    all_anxiety_depression_numeric = 
+           case_when(
+             single_anxiety_numeric == 1 ~ 1,
+             anxiety_anxiety_numeric == 1 ~ 2,
+             anxiety_depression_numeric == 1 ~ 3,
+             single_depression_numeric == 1 ~ 4,
+           )
+    ) %>% 
+  mutate(
+    all_anxiety_depression = 
+      recode_factor(all_anxiety_depression_numeric,
+        "1" = "Single anxiety",
+        "2" = "Anxiety-anxiety",
+        "3" = "Anxiety-MDD",
+        "4" = "MDD only",
+      )
+  )
+
+summarytools::freq(dat$all_anxiety_depression)
+```
+
+### Final variables
+
+```{r single anxiety vs anxiety anxiety}
+#Numeric variable
+dat <- dat %>% 
+  mutate(
+    single_anxiety_vs_anxiety_anxiety_numeric =
+      case_when(
+        single_anxiety_numeric == 1 ~ 0,
+        anxiety_anxiety_numeric == 1 ~ 1
+      )
+  )
+
+
+#Factor variable
+dat <- dat %>% 
+  mutate(single_anxiety_vs_anxiety_anxiety =
+           recode_factor(
+             single_anxiety_vs_anxiety_anxiety_numeric,
+             '0' = "Single anxiety",
+             '1' = "Anxiety-anxiety"
+             )
+  )
+
+summarytools::freq(dat$single_anxiety_vs_anxiety_anxiety_numeric)
+summarytools::freq(dat$single_anxiety_vs_anxiety_anxiety)
+```
+
+```{r single anxiety vs anxiety depression}
+#Numeric variable
+dat <- dat %>% 
+  mutate(
+    single_anxiety_vs_anxiety_depression_numeric =
+      case_when(
+        single_anxiety_numeric == 1 ~ 0,
+        anxiety_depression_numeric == 1 ~ 1
+      )
+  )
+
+
+#Factor variable
+dat <- dat %>% 
+  mutate(single_anxiety_vs_anxiety_depression =
+           recode_factor(
+             single_anxiety_vs_anxiety_depression_numeric,
+             '0' = "Single anxiety",
+             '1' = "Anxiety-MDD"
+             )
+  )
+
+summarytools::freq(dat$single_anxiety_vs_anxiety_depression_numeric)
+summarytools::freq(dat$single_anxiety_vs_anxiety_depression_numeric)
+```
+
+```{r anxiety-MDD vs anxiety-anxiety}
+#Numeric variable
+dat <- dat %>% 
+  mutate(
+    anxiety_depression_vs_anxiety_anxiety_numeric =
+      case_when(
+        anxiety_depression_numeric == 1 ~ 0,
+        anxiety_anxiety_numeric == 1 ~ 1
+      )
+  )
+
+
+#Factor variable
+dat <- dat %>% 
+  mutate(anxiety_depression_vs_anxiety_anxiety =
+           recode_factor(
+             anxiety_depression_vs_anxiety_anxiety_numeric,
+             '0' = "Anxiety-MDD",
+             '1' = "Anxiety-anxiety"
+             )
+  )
+
+summarytools::freq(dat$anxiety_depression_vs_anxiety_anxiety_numeric)
+summarytools::freq(dat$anxiety_depression_vs_anxiety_anxiety)
+```
+
+```{r MDD only vs anxiety depression}
+#Numeric variable
+dat <- dat %>% 
+  mutate(
+    single_depression_vs_anxiety_depression_numeric =
+      case_when(
+        single_depression_numeric == 1 ~ 0,
+        anxiety_depression_numeric == 1 ~ 1
+      )
+  )
+
+
+#Factor variable
+dat <- dat %>% 
+  mutate(single_depression_vs_anxiety_depression =
+           recode_factor(
+             single_depression_vs_anxiety_depression_numeric,
+             '0' = "MDD only",
+             '1' = "Anxiety-MDD"
+             )
+  )
+
+summarytools::freq(dat$single_depression_vs_anxiety_depression_numeric)
+summarytools::freq(dat$single_depression_vs_anxiety_depression)
+```
+
+
+# Adjusted variables for analyses
+
+Create variable for age divided by 10  
+Create variable for age of onset divided by 10  
+Create variable for chronicity divided by 10   
+Create unordered factor education variable   
+Create collapsed education variable (combined CSE/GCSE)   
+Reorder ethnicity variable (White as comparison)  
+```{r variable prep, include=FALSE}
+dat <- dat %>% 
+  mutate(
+    dem.age_adjusted = 
+      dem.age/10,
+    dem.highest_education_unordered = 
+      factor(dem.highest_education, ordered = F),
+    dem.ethnicity_collapsed = 
+      fct_relevel(
+        .f = dem.ethnicity_collapsed_unordered,
+        c("Minoritised ethnic group",
+          "White")
+      ),
+    dem.highest_education_unordered_collapsed = 
+           recode_factor(dem.highest_education_unordered,
+                         "CSEs or equivalent" = "O levels/GCSEs or equivalent"
+                         ),
+    dem.highest_education_ordered_collapsed = 
+           fct_relevel(
+             .f = dem.highest_education_unordered_collapsed,
+             c("No qualifications",
+               "O levels/GCSEs or equivalent",
+               "A levels/AS levels or equivalent",
+               "College or university degree"
+               )
+                         ),
+    max_chronicity_adjusted = 
+      max_chronicity/10,
+    min_age_of_onset_adjusted = 
+      min_age_of_onset/10
+  )
+
+# Check above worked
+class(dat$dem.highest_education_unordered_collapsed)
+levels(dat$dem.highest_education_unordered_collapsed)
+levels(dat$dem.ethnicity_collapsed)
+
+summary(dat$dem.age_adjusted)
+summary(dat$dem.age)
+```
+
+# Save new variable dataset
+```{r Save new dataset as rds file}
+saveRDS(object = dat, file = paste0(cleaned_path, "anxcmbd_newvariables_uncleaned_mhfh_fixed_cmbd_fixed.rds"))
+```
